@@ -24,10 +24,15 @@
   .libs::-webkit-scrollbar{display:none}
   .libs button{flex:none;border:1px solid rgba(255,255,255,.35);background:transparent;color:#f3e2d6;border-radius:20px;padding:6px 12px;font-size:.85rem;white-space:nowrap}
   .libs button.ativo{background:#fff;color:var(--primaria);font-weight:700;border-color:#fff}
-  nav{display:flex;background:#8f4d35;position:sticky;top:0;z-index:5;overflow-x:auto}
-  nav button{flex:1;min-width:88px;background:none;border:0;color:#f3e2d6;padding:10px 6px 11px;font-size:.88rem;border-bottom:3px solid transparent;position:relative}
-  nav button.ativo{color:#fff;border-bottom-color:#f6c28b;font-weight:600}
-  .bolinha{position:absolute;top:4px;right:8px;background:#f6c28b;color:var(--primaria);border-radius:10px;font-size:.7rem;padding:0 6px;font-weight:700}
+  .libs .ponto{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;border:1px solid rgba(255,255,255,.8);vertical-align:0}
+  header,.libs,nav{transition:background-color .3s}
+  /* SEPARADORES: ícone em cima, texto em baixo */
+  nav{display:flex;background:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18)),var(--primaria);position:sticky;top:0;z-index:5}
+  nav button{flex:1;min-width:0;background:none;border:0;color:rgba(255,255,255,.75);padding:7px 4px 6px;border-bottom:3px solid transparent;position:relative;display:flex;flex-direction:column;align-items:center;gap:2px}
+  nav .ico{font-size:1.35rem;line-height:1}
+  nav .txt{font-size:.72rem;white-space:nowrap}
+  nav button.ativo{color:#fff;border-bottom-color:#fff;font-weight:600}
+  .bolinha{position:absolute;top:3px;left:calc(50% + 10px);background:#ffd27a;color:#5a3a00;border-radius:10px;font-size:.68rem;padding:0 6px;font-weight:700}
   main{max-width:760px;margin:0 auto;padding:14px 16px 80px}
   main>section{display:none} main>section.ativo{display:block}
   .aviso{background:var(--alerta-bg);color:var(--alerta);padding:10px 16px;font-weight:600;cursor:pointer}
@@ -75,8 +80,16 @@
   .tipo label.sel{background:var(--primaria);color:#fff}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
   .dica{font-size:.8rem;color:var(--suave);margin-top:4px}
-  #leitor{width:100%;border-radius:var(--raio);overflow:hidden;margin:10px 0;background:#000}
-  #leitor:empty{display:none}
+  .barra-pesquisa{display:flex;gap:8px}
+  .barra-pesquisa input{flex:1}
+  .btn-cam{flex:none;width:52px;border:0;border-radius:10px;background:var(--primaria);color:#fff;font-size:1.4rem}
+  .btn-cam.on{background:var(--alerta)}
+  #leitor{width:100%;min-height:200px;border-radius:var(--raio);overflow:hidden;margin:10px 0;background:#000}
+  #painel{border:2px solid var(--primaria);border-radius:var(--raio);padding:4px 12px 12px;margin:12px 0;background:#fff}
+  .painel-topo{display:flex;justify-content:space-between;align-items:center}
+  .painel-topo button{border:0;background:none;font-size:1.3rem;color:var(--suave);padding:6px}
+  .links{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 0;font-size:.85rem}
+  .links a{color:var(--primaria);font-weight:600;text-decoration:none}
   details{margin-top:18px} summary{color:var(--suave);cursor:pointer}
   dialog{border:0;border-radius:16px;padding:0;width:min(560px,94vw);max-height:90vh}
   dialog::backdrop{background:rgba(30,20,10,.45)}
@@ -114,16 +127,30 @@
   </header>
   <div class="libs" id="barraLibs"></div>
   <div id="aviso" class="aviso hidden" onclick="irParaAtrasados()"></div>
+  <!-- ===== SEPARADORES (ícone em cima, texto em baixo) ===== -->
   <nav>
-    <button data-tab="pesquisa" class="ativo">🔎 Pesquisar</button>
-    <button data-tab="ler">📷 Ler ISBN</button>
-    <button data-tab="emprestados">📤 Emprestados</button>
-    <button data-tab="recebidos">📥 Emprestaram-nos<span id="bolRec" class="bolinha hidden"></span></button>
+    <button data-tab="pesquisa" class="ativo"><span class="ico">🔎</span><span class="txt">Livros</span></button>
+    <button data-tab="emprestados"><span class="ico">📤</span><span class="txt">Emprestados</span></button>
+    <button data-tab="recebidos"><span class="ico">📥</span><span class="txt">Emprestaram-nos</span><span id="bolRec" class="bolinha hidden"></span></button>
   </nav>
 
   <main>
     <section id="tab-pesquisa" class="ativo">
-      <input id="q" type="search" placeholder="Título, autor ou ISBN (pode ser parcial)" oninput="pesquisar()" autocomplete="off">
+      <div class="barra-pesquisa">
+        <input id="q" type="search" placeholder="Título, autor ou ISBN" autocomplete="off"
+               oninput="fecharPainel();pesquisar()" onkeydown="if(event.key==='Enter')enterPesquisa()">
+        <button id="btnCam" class="btn-cam" onclick="alternarCamara()" title="Ler código de barras">📷</button>
+      </div>
+      <div id="leitor" class="hidden"></div>
+      <div class="links">
+        <a href="#" id="lnkFoto" onclick="$('#fotoIsbn').click();return false">🖼️ Ler a partir de foto</a>
+        <a href="#" id="lnkManual" onclick="novoSemIsbn();return false">➕ Registar à mão</a>
+      </div>
+      <input type="file" id="fotoIsbn" accept="image/*" capture="environment" class="hidden" onchange="lerFoto(this)">
+      <div id="painel" class="hidden">
+        <div class="painel-topo"><b id="painelTitulo"></b><button onclick="fecharPainel()" aria-label="Fechar">✕</button></div>
+        <div id="resultadoLeitura"></div>
+      </div>
       <div class="filtros">
         <select id="fCat" onchange="pesquisar()"><option value="">Todas as categorias</option></select>
         <select id="fDono" onchange="pesquisar()"><option value="">Todos os donos</option></select>
@@ -131,18 +158,6 @@
       <label class="check"><input type="checkbox" id="fRec" checked onchange="pesquisar()"> Incluir livros que nos emprestaram</label>
       <div id="resumo" class="contagem"></div>
       <div id="resultados"></div>
-    </section>
-
-    <section id="tab-ler">
-      <button id="btnCam" class="btn grande" onclick="alternarCamara()">📷 Ler código de barras</button>
-      <div id="leitor"></div>
-      <label for="isbnManual">…ou escreve o ISBN</label>
-      <div class="linha">
-        <input id="isbnManual" inputmode="numeric" placeholder="978…" onkeydown="if(event.key==='Enter')procurarIsbn(this.value)">
-        <button class="btn" style="flex:none" onclick="procurarIsbn($('#isbnManual').value)">Procurar</button>
-      </div>
-      <p class="dica">Livro sem código de barras? <a href="#" onclick="novoSemIsbn();return false">Registar à mão</a></p>
-      <div id="resultadoLeitura"></div>
     </section>
 
     <section id="tab-emprestados">
@@ -168,6 +183,19 @@
 const API_URL   = 'https://script.google.com/macros/s/AKfycbxaJKIGbolWBiENeKCoaNQo60wfZocAz03b-2BbrxXjoiOvHfAQnzGExTYaBpAn1h67GQ/exec';                 // termina em /exec
 const CLIENT_ID = '225919717991-9qfubsvah95smkp92bucamt1qnr7or9r.apps.googleusercontent.com';
 const DIAS_AVISO = 30;
+
+/* ============ CORES DAS BIBLIOTECAS ============
+   Cada biblioteca muda a cor da app quando é escolhida.
+   À esquerda o id (coluna "id" da folha Bibliotecas), à direita a cor.
+   Escolhe cores em https://htmlcolorcodes.com (copia o código #......). */
+const CORES = {
+  b1:  '#7a3e2a',   // Francisco & Guilherme — terracota
+  b2:  '#2c5f8a',   // Bernardo & Tomás — azul
+  b3:  '#2f6f4f',   // Benedita & Leonor — verde
+  b4:  '#7b3f8c',   // Sara — roxo
+  '*': '#3f4450'    // 🌐 Toda a rede — cinzento
+};
+const CORES_EXTRA = ['#a0522d', '#00796b', '#c2185b', '#5d4037', '#455a64']; // para bibliotecas novas sem cor definida
 /* ======================================================= */
 
 let TOKEN = '', DB = null, ESCOPO = '*', scanner = null;
@@ -270,10 +298,23 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => mudarTab(
 function mudarTab(t) {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('ativo', b.dataset.tab === t));
   document.querySelectorAll('main>section').forEach(s => s.classList.toggle('ativo', s.id === 'tab-' + t));
-  if (t !== 'ler') pararCamara();
+  if (t !== 'pesquisa') pararCamara();
   window.scrollTo(0, 0);
 }
-function mudarEscopo(id) { ESCOPO = id; guardar('rede_escopo', id); $('#resultadoLeitura').innerHTML = ''; renderTudo(); }
+function mudarEscopo(id) { ESCOPO = id; guardar('rede_escopo', id); fecharPainel(); renderTudo(); }
+
+/* cor da biblioteca escolhida (ver CORES na configuração) */
+function corDe(id) {
+  if (CORES[id]) return CORES[id];
+  const i = DB.bibliotecas.findIndex(b => b.id === id);
+  return CORES_EXTRA[(i < 0 ? 0 : i) % CORES_EXTRA.length];
+}
+function aplicarCor() {
+  const c = corDe(ESCOPO);
+  document.documentElement.style.setProperty('--primaria', c);
+  document.documentElement.style.setProperty('--primaria-2', c);
+  document.querySelector('meta[name=theme-color]').setAttribute('content', c);
+}
 function irParaAtrasados() {
   const a = recAtivos().filter(r => dias(r.dataRecebido) >= DIAS_AVISO && podeEditar(r.biblioteca));
   if (a.length && ESCOPO !== '*' && !a.some(r => r.biblioteca === ESCOPO)) mudarEscopo(a[0].biblioteca);
@@ -281,10 +322,12 @@ function irParaAtrasados() {
 }
 
 function renderTudo() {
-  // barra de bibliotecas
+  aplicarCor();
+  // barra de bibliotecas (cada uma com a sua bolinha de cor)
   $('#barraLibs').innerHTML = DB.bibliotecas.map(b =>
-    `<button class="${b.id === ESCOPO ? 'ativo' : ''}" onclick="mudarEscopo('${esc(b.id)}')">${podeEditar(b.id) && !DB.eu.admin ? '⭐ ' : ''}${esc(b.nome)}</button>`).join('')
+    `<button class="${b.id === ESCOPO ? 'ativo' : ''}" onclick="mudarEscopo('${esc(b.id)}')"><span class="ponto" style="background:${corDe(b.id)}"></span>${podeEditar(b.id) && !DB.eu.admin ? '⭐ ' : ''}${esc(b.nome)}</button>`).join('')
     + `<button class="${ESCOPO === '*' ? 'ativo' : ''}" onclick="mudarEscopo('*')">🌐 Toda a rede</button>`;
+  $('#lnkManual').classList.toggle('hidden', !minhasLibs().length);
 
   // avisos: só dos livros pelos quais eu sou responsável
   const atr = recAtivos().filter(r => dias(r.dataRecebido) >= DIAS_AVISO && podeEditar(r.biblioteca));
@@ -356,7 +399,7 @@ function pesquisar() {
   $('#resumo').textContent = `${ESCOPO === '*' ? 'Toda a rede' : nomeLib(ESCOPO)}: ${nTotal} livros`;
 
   let html = '';
-  if (!nTotal && !recs.length && !fora.length) html = `<div class="vazio">Ainda não há livros aqui.${podeEditar(ESCOPO) ? '<br>Começa no separador <b>📷 Ler ISBN</b>.' : ''}</div>`;
+  if (!nTotal && !recs.length && !fora.length) html = `<div class="vazio">Ainda não há livros aqui.${podeEditar(ESCOPO) ? '<br>Carrega em <b>📷</b> e aponta para o código de barras de um livro.' : ''}</div>`;
   else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde a “${esc(bruto || cat || dono)}”.</div>`;
   else {
     if (q || cat || dono) html += `<div class="contagem">${livros.length} encontrado(s)${recs.length ? ` + ${recs.length} emprestado(s) por outros` : ''}</div>`;
@@ -367,28 +410,79 @@ function pesquisar() {
 }
 
 /* ---------- câmara / ISBN ---------- */
+const novoLeitor = () => new Html5Qrcode('leitor', {
+  formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
+  experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false
+});
+const ehIsbn = t => /^97[89]\d{10}$/.test(t);
+
 async function alternarCamara() {
   if (scanner) return pararCamara();
-  $('#resultadoLeitura').innerHTML = '';
-  scanner = new Html5Qrcode('leitor', { formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13], experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
+  if (typeof Html5Qrcode === 'undefined') return toast('O leitor não carregou. Atualiza a página.', 4000);
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return toast('Este browser não deixa usar a câmara (se abriste o link no WhatsApp/Instagram, abre no Safari ou Chrome). Usa “Ler a partir de foto”.', 7000);
+  }
+  fecharPainel();
+  $('#leitor').classList.remove('hidden');           // a área tem de estar visível ANTES de ligar a câmara
+  scanner = novoLeitor();
   try {
-    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 130 } }, txt => {
-      if (/^97[89]\d{10}$/.test(txt)) { if (navigator.vibrate) navigator.vibrate(120); pararCamara(); procurarIsbn(txt); }
+    await scanner.start({ facingMode: 'environment' }, {
+      fps: 10,
+      qrbox: (w, h) => ({ width: Math.max(150, Math.min(320, w * 0.9)), height: Math.max(80, Math.min(150, h * 0.45)) })
+    }, txt => {
+      if (ehIsbn(txt)) { if (navigator.vibrate) navigator.vibrate(120); pararCamara(); procurarIsbn(txt); }
     });
-    $('#btnCam').textContent = '⏹ Parar câmara';
-  } catch (e) { scanner = null; toast('Não consegui abrir a câmara. Confirma a permissão no browser ou escreve o ISBN.', 4500); }
+    $('#btnCam').textContent = '✕'; $('#btnCam').classList.add('on');
+  } catch (e) {
+    scanner = null; $('#leitor').classList.add('hidden');
+    const m = String(e && (e.name || e.message || e));
+    toast(/NotAllowed|Permission/i.test(m)
+      ? 'A câmara está bloqueada. No iPhone: Definições ▸ Safari ▸ Câmara ▸ Permitir. Entretanto usa “Ler a partir de foto”.'
+      : 'Não consegui abrir a câmara (' + m + '). Usa “Ler a partir de foto”.', 7000);
+  }
 }
 async function pararCamara() {
   if (!scanner) return;
   const s = scanner; scanner = null;
   try { await s.stop(); s.clear(); } catch (e) {}
-  $('#btnCam').textContent = '📷 Ler código de barras';
+  $('#leitor').classList.add('hidden');
+  $('#btnCam').textContent = '📷'; $('#btnCam').classList.remove('on');
+}
+/* alternativa: tirar uma fotografia ao código de barras */
+async function lerFoto(input) {
+  const f = input.files && input.files[0]; input.value = '';
+  if (!f) return;
+  if (typeof Html5Qrcode === 'undefined') return toast('O leitor não carregou. Atualiza a página.');
+  await pararCamara();
+  $('#loading').classList.add('on');
+  try {
+    const txt = await novoLeitor().scanFile(f, false);
+    if (!ehIsbn(txt)) throw new Error();
+    procurarIsbn(txt);
+  } catch (e) { toast('Não consegui ler o código na foto. Tenta mais perto e com boa luz.', 4500); }
+  finally { $('#loading').classList.remove('on'); }
+}
+/* Enter na pesquisa: se for um ISBN completo, procura-o como se tivesse sido lido */
+function enterPesquisa() {
+  const d = $('#q').value.replace(/[^0-9xX]/g, '');
+  if (d.length === 10 || d.length === 13) procurarIsbn(d);
+}
+
+function abrirPainel(titulo, html) {
+  $('#painelTitulo').textContent = titulo;
+  $('#resultadoLeitura').innerHTML = html;
+  $('#painel').classList.remove('hidden');
+  $('#painel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function fecharPainel() {
+  if ($('#painel').classList.contains('hidden')) return;
+  $('#painel').classList.add('hidden'); $('#resultadoLeitura').innerHTML = '';
 }
 
 async function procurarIsbn(isbn) {
   isbn = String(isbn || '').trim();
   if (!isbn) return toast('Escreve um ISBN');
-  $('#isbnManual').value = isbn;
+  mudarTab('pesquisa');
   let r;
   try { r = await api('lookup', { isbn }); } catch (e) { return toast('⚠️ ' + e.message, 4000); }
 
@@ -405,18 +499,19 @@ async function procurarIsbn(isbn) {
     if (jaHa) html += `<button class="btn sec" onclick="this.remove();$('#formNovo').classList.remove('hidden')">Registar mesmo assim</button>`;
     html += `<div id="formNovo" class="${jaHa ? 'hidden' : ''}">${formLivro({ isbn: r.isbn, ...(r.meta || {}) }, 'novo', 'n-')}</div>`;
   } else if (!r.existentes.length) html += `<div class="caixa info">Ninguém na rede tem este livro.</div>`;
-  $('#resultadoLeitura').innerHTML = html;
+  abrirPainel('ISBN ' + r.isbn, html);
   ligarForm('n-');
 }
 function novoSemIsbn() {
   pararCamara();
   if (!minhasLibs().length) return toast('Não tens nenhuma biblioteca para editar.');
-  $('#resultadoLeitura').innerHTML = `<div id="formNovo">${formLivro({}, 'novo', 'n-')}</div>`;
+  abrirPainel('Novo livro', `<div id="formNovo">${formLivro({}, 'novo', 'n-')}</div>`);
   ligarForm('n-');
 }
 function novoRecebido() {
-  mudarTab('ler');
-  $('#resultadoLeitura').innerHTML = `<div class="dica">Lê o código de barras acima para preencher automaticamente, ou preenche aqui:</div><div id="formNovo">${formLivro({}, 'novo', 'n-', 'recebido')}</div>`;
+  mudarTab('pesquisa');
+  abrirPainel('Livro que nos emprestaram',
+    `<div class="dica">Podes carregar em 📷 para preencher automaticamente, ou preencher aqui:</div><div id="formNovo">${formLivro({}, 'novo', 'n-', 'recebido')}</div>`);
   ligarForm('n-');
 }
 
@@ -523,7 +618,7 @@ async function guardarForm(ev, px, modo) {
     ok = modo === 'editar' ? await gravar('editLivro', { id, ...p }, 'Atualizado ✔') : await gravar('addLivro', p, 'Livro guardado ✔');
   }
   if (!ok) return;
-  if (modo === 'novo') { $('#resultadoLeitura').innerHTML = ''; $('#isbnManual').value = ''; }
+  if (modo === 'novo') { fecharPainel(); $('#q').value = ''; pesquisar(); }
   else fecharDlg();
 }
 
