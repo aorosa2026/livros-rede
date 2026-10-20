@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#7a3e2a">
+<title>Bibliotecas da Rede</title>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --bg:#faf6f1; --card:#fff; --tinta:#2b2118; --suave:#7b6c5f; --linha:#e8ddd1;
+    --primaria:#7a3e2a; --primaria-2:#9c5a3c; --ok:#2f7d4f; --ok-bg:#e5f3ea;
+    --alerta:#b3261e; --alerta-bg:#fde8e6; --info-bg:#fff4dc; --rede-bg:#e8eefc; --rede:#2c4f9e; --raio:12px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--tinta);font-size:16px}
+  header{background:var(--primaria);color:#fff;padding:12px 16px 8px;padding-top:max(12px,env(safe-area-inset-top));display:flex;align-items:center;gap:10px}
+  header h1{margin:0;font-size:1.2rem;flex:1}
+  header .eu{font-size:.75rem;opacity:.85;text-align:right;line-height:1.3}
+  header .eu a{color:#f6c28b}
+  .libs{display:flex;gap:6px;overflow-x:auto;padding:4px 16px 10px;background:var(--primaria);scrollbar-width:none}
+  .libs::-webkit-scrollbar{display:none}
+  .libs button{flex:none;border:1px solid rgba(255,255,255,.35);background:transparent;color:#f3e2d6;border-radius:20px;padding:6px 12px;font-size:.85rem;white-space:nowrap}
+  .libs button.ativo{background:#fff;color:var(--primaria);font-weight:700;border-color:#fff}
+  nav{display:flex;background:#8f4d35;position:sticky;top:0;z-index:5;overflow-x:auto}
+  nav button{flex:1;min-width:88px;background:none;border:0;color:#f3e2d6;padding:10px 6px 11px;font-size:.88rem;border-bottom:3px solid transparent;position:relative}
+  nav button.ativo{color:#fff;border-bottom-color:#f6c28b;font-weight:600}
+  .bolinha{position:absolute;top:4px;right:8px;background:#f6c28b;color:var(--primaria);border-radius:10px;font-size:.7rem;padding:0 6px;font-weight:700}
+  main{max-width:760px;margin:0 auto;padding:14px 16px 80px}
+  main>section{display:none} main>section.ativo{display:block}
+  .aviso{background:var(--alerta-bg);color:var(--alerta);padding:10px 16px;font-weight:600;cursor:pointer}
+  .hidden{display:none!important}
+  input,select,textarea{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--linha);border-radius:10px;background:#fff;color:inherit}
+  textarea{min-height:60px}
+  label{display:block;font-size:.85rem;color:var(--suave);margin:10px 0 4px}
+  button{font:inherit;cursor:pointer}
+  .btn{background:var(--primaria);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:600}
+  .btn.sec{background:#fff;color:var(--primaria);border:1px solid var(--primaria)}
+  .btn.perigo{background:#fff;color:var(--alerta);border:1px solid var(--alerta)}
+  .btn.grande{width:100%;padding:14px;font-size:1.05rem}
+  .linha{display:flex;gap:8px;align-items:end}
+  .linha>*{flex:1}
+  .filtros{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .check{display:flex;gap:8px;align-items:center;margin:10px 0;color:var(--suave);font-size:.9rem}
+  .check input{width:auto}
+  .contagem{color:var(--suave);font-size:.9rem;margin:12px 0 6px}
+  .subtitulo{margin:22px 0 4px;font-size:.95rem;color:var(--rede)}
+  .card{display:flex;gap:12px;background:var(--card);border:1px solid var(--linha);border-radius:var(--raio);padding:12px;margin:10px 0}
+  .card.rede{border-color:#cdd9f5}
+  .capa{width:58px;height:84px;flex:none;border-radius:6px;object-fit:cover;background:#efe4d8;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--primaria-2);font-size:1.4rem}
+  .info{flex:1;min-width:0}
+  .info h3{margin:0 0 2px;font-size:1rem;line-height:1.25}
+  .info p{margin:2px 0;font-size:.85rem;color:var(--suave)}
+  .badge{display:inline-block;font-size:.78rem;font-weight:600;border-radius:20px;padding:2px 9px;margin:6px 4px 0 0}
+  .badge.in{background:var(--ok-bg);color:var(--ok)}
+  .badge.out{background:var(--info-bg);color:#8a5a00}
+  .badge.atraso{background:var(--alerta-bg);color:var(--alerta)}
+  .badge.lib{background:var(--rede-bg);color:var(--rede)}
+  .acoes{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .acoes button{font-size:.85rem;padding:6px 10px;border-radius:8px;border:1px solid var(--primaria);background:var(--primaria);color:#fff}
+  .acoes button.sec{background:#fff;color:var(--primaria)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .chip{border:1px solid var(--linha);background:#fff;border-radius:20px;padding:5px 11px;font-size:.85rem;color:var(--tinta)}
+  .chip.lib{background:var(--rede-bg);border-color:#cdd9f5;color:var(--rede)}
+  .caixa{border-radius:var(--raio);padding:12px 14px;margin:12px 0}
+  .caixa.ok{background:var(--ok-bg);color:var(--ok)}
+  .caixa.info{background:var(--info-bg);color:#6b4600}
+  .caixa.rede{background:var(--rede-bg);color:var(--rede)}
+  .caixa h3{margin:0 0 4px;font-size:1rem}
+  .tipo{display:flex;gap:6px;margin:6px 0 4px}
+  .tipo label{flex:1;margin:0;text-align:center;border:1px solid var(--primaria);border-radius:10px;padding:10px;color:var(--primaria);font-weight:600;font-size:.9rem}
+  .tipo input{display:none}
+  .tipo label.sel{background:var(--primaria);color:#fff}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+  .dica{font-size:.8rem;color:var(--suave);margin-top:4px}
+  #leitor{width:100%;border-radius:var(--raio);overflow:hidden;margin:10px 0;background:#000}
+  #leitor:empty{display:none}
+  details{margin-top:18px} summary{color:var(--suave);cursor:pointer}
+  dialog{border:0;border-radius:16px;padding:0;width:min(560px,94vw);max-height:90vh}
+  dialog::backdrop{background:rgba(30,20,10,.45)}
+  .dlg-corpo{padding:16px 18px 18px;overflow:auto;max-height:90vh}
+  .dlg-corpo h2{margin:0 0 6px;font-size:1.1rem}
+  .botoes{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#2b2118;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;max-width:90vw}
+  #toast.on{opacity:1}
+  #loading{position:fixed;inset:0;background:rgba(250,246,241,.6);display:none;align-items:center;justify-content:center;z-index:40}
+  #loading.on{display:flex}
+  .spin{width:38px;height:38px;border:4px solid #e3d3c4;border-top-color:var(--primaria);border-radius:50%;animation:r 1s linear infinite}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .vazio{text-align:center;color:var(--suave);padding:30px 10px}
+  #ecraLogin{max-width:420px;margin:12vh auto 0;padding:24px;text-align:center}
+  #ecraLogin h1{color:var(--primaria);margin:0 0 6px}
+  #ecraLogin p{color:var(--suave)}
+  #btnGoogle{display:flex;justify-content:center;margin:24px 0 10px;min-height:44px}
+</style>
+</head>
+<body>
+
+<!-- ECRÃ DE ENTRADA -->
+<div id="ecraLogin">
+  <h1>📚 Bibliotecas da Rede</h1>
+  <p>Entra com a tua conta Google. Só as pessoas autorizadas veem os livros.</p>
+  <div id="btnGoogle"></div>
+  <div id="msgLogin" class="caixa info hidden"></div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden">
+  <header>
+    <h1>📚 Bibliotecas da Rede</h1>
+    <div class="eu"><span id="meuEmail"></span><br><a href="#" onclick="sair();return false">Sair</a></div>
+  </header>
+  <div class="libs" id="barraLibs"></div>
+  <div id="aviso" class="aviso hidden" onclick="irParaAtrasados()"></div>
+  <nav>
+    <button data-tab="pesquisa" class="ativo">🔎 Pesquisar</button>
+    <button data-tab="ler">📷 Ler ISBN</button>
+    <button data-tab="emprestados">📤 Emprestados</button>
+    <button data-tab="recebidos">📥 Emprestaram-nos<span id="bolRec" class="bolinha hidden"></span></button>
+  </nav>
+
+  <main>
+    <section id="tab-pesquisa" class="ativo">
+      <input id="q" type="search" placeholder="Título, autor ou ISBN (pode ser parcial)" oninput="pesquisar()" autocomplete="off">
+      <div class="filtros">
+        <select id="fCat" onchange="pesquisar()"><option value="">Todas as categorias</option></select>
+        <select id="fDono" onchange="pesquisar()"><option value="">Todos os donos</option></select>
+      </div>
+      <label class="check"><input type="checkbox" id="fRec" checked onchange="pesquisar()"> Incluir livros que nos emprestaram</label>
+      <div id="resumo" class="contagem"></div>
+      <div id="resultados"></div>
+    </section>
+
+    <section id="tab-ler">
+      <button id="btnCam" class="btn grande" onclick="alternarCamara()">📷 Ler código de barras</button>
+      <div id="leitor"></div>
+      <label for="isbnManual">…ou escreve o ISBN</label>
+      <div class="linha">
+        <input id="isbnManual" inputmode="numeric" placeholder="978…" onkeydown="if(event.key==='Enter')procurarIsbn(this.value)">
+        <button class="btn" style="flex:none" onclick="procurarIsbn($('#isbnManual').value)">Procurar</button>
+      </div>
+      <p class="dica">Livro sem código de barras? <a href="#" onclick="novoSemIsbn();return false">Registar à mão</a></p>
+      <div id="resultadoLeitura"></div>
+    </section>
+
+    <section id="tab-emprestados">
+      <div id="listaEmp"></div>
+      <details><summary>Histórico de empréstimos</summary><div id="histEmp"></div></details>
+    </section>
+
+    <section id="tab-recebidos">
+      <button id="btnNovoRec" class="btn grande" onclick="novoRecebido()">➕ Registar livro que nos emprestaram</button>
+      <p class="dica">Os empréstimos entre bibliotecas da rede aparecem aqui sozinhos.</p>
+      <div id="listaRec"></div>
+      <details><summary>Já devolvidos</summary><div id="histRec"></div></details>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg"><div class="dlg-corpo" id="dlgCorpo"></div></dialog>
+<div id="toast"></div>
+<div id="loading"><div class="spin"></div></div>
+
+<script>
+/* ===================== CONFIGURAÇÃO ===================== */
+const API_URL   = 'https://script.google.com/macros/s/AKfycbxaJKIGbolWBiENeKCoaNQo60wfZocAz03b-2BbrxXjoiOvHfAQnzGExTYaBpAn1h67GQ/exec';                 // termina em /exec
+const CLIENT_ID = '225919717991-9qfubsvah95smkp92bucamt1qnr7or9r.apps.googleusercontent.com';
+const DIAS_AVISO = 30;
+/* ======================================================= */
+
+let TOKEN = '', DB = null, ESCOPO = '*', scanner = null;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const hojeISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+const fmt = iso => iso ? iso.split('-').reverse().join('/') : '';
+const dias = iso => { if (!iso) return 0; const [y, m, d] = iso.split('-').map(Number); const [hy, hm, hd] = hojeISO().split('-').map(Number); return Math.round((Date.UTC(hy, hm - 1, hd) - Date.UTC(y, m - 1, d)) / 864e5); };
+const porTitulo = (a, b) => a.titulo.localeCompare(b.titulo, 'pt');
+const guardar = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+const ler = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+
+/* ================= LOGIN GOOGLE ================= */
+function payloadJWT(t) {
+  try { let s = t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); s += '='.repeat((4 - s.length % 4) % 4);
+        return JSON.parse(decodeURIComponent(escape(atob(s)))); } catch (e) { return {}; }
+}
+const tokenValido = t => !!t && (payloadJWT(t).exp || 0) * 1000 > Date.now() + 60000;
+
+function prepararLogin() {
+  if (!(window.google && google.accounts && google.accounts.id)) return setTimeout(prepararLogin, 150);
+  google.accounts.id.initialize({
+    client_id: CLIENT_ID, auto_select: true, cancel_on_tap_outside: false,
+    callback: r => { TOKEN = r.credential; guardar('rede_token', TOKEN); arrancar(); }
+  });
+  google.accounts.id.renderButton($('#btnGoogle'), { theme: 'outline', size: 'large', text: 'signin_with', shape: 'pill', locale: 'pt-PT' });
+  const t = ler('rede_token');
+  if (tokenValido(t)) { TOKEN = t; arrancar(); }
+  else mostrarLogin();
+}
+function mostrarLogin(msg) {
+  TOKEN = ''; guardar('rede_token', null);
+  $('#app').classList.add('hidden'); $('#ecraLogin').classList.remove('hidden');
+  $('#msgLogin').classList.toggle('hidden', !msg); $('#msgLogin').innerHTML = msg || '';
+  if (!msg && window.google) google.accounts.id.prompt();
+}
+function sair() { if (window.google) google.accounts.id.disableAutoSelect(); pararCamara(); mostrarLogin(); }
+
+/* ================= API ================= */
+async function api(action, payload = {}) {
+  if (!tokenValido(TOKEN)) { mostrarLogin('A sessão terminou. Entra outra vez.'); throw new Error('Sessão terminada'); }
+  $('#loading').classList.add('on');
+  try {
+    const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ token: TOKEN, action, payload }) });
+    const j = await r.json();
+    if (j.ok) return j.data;
+    if (j.erro === 'SESSAO_EXPIRADA' || j.erro === 'SEM_LOGIN') { mostrarLogin('A sessão terminou. Entra outra vez.'); throw new Error('Sessão terminada'); }
+    if (j.erro.startsWith('NAO_AUTORIZADO:')) {
+      const em = j.erro.split(':')[1];
+      if (window.google) google.accounts.id.disableAutoSelect();
+      mostrarLogin(`A conta <b>${esc(em)}</b> ainda não tem acesso.<br>Pede ao administrador para a juntar a uma biblioteca, ou entra com outra conta.`);
+      throw new Error('Sem acesso');
+    }
+    throw new Error(j.erro);
+  } finally { $('#loading').classList.remove('on'); }
+}
+async function gravar(action, payload, msg) {
+  try { DB = await api(action, payload); renderTudo(); if (msg) toast(msg); return true; }
+  catch (e) { toast('⚠️ ' + e.message, 4000); return false; }
+}
+function toast(t, ms = 2400) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), ms); }
+
+async function arrancar() {
+  try { DB = await api('tudo'); }
+  catch (e) {
+    const m = $('#msgLogin');
+    if (!m.innerHTML || m.classList.contains('hidden')) { m.classList.remove('hidden'); m.textContent = 'Não consegui ligar ao servidor: ' + e.message; }
+    return;
+  }
+  $('#ecraLogin').classList.add('hidden'); $('#app').classList.remove('hidden');
+  $('#meuEmail').textContent = DB.eu.email + (DB.eu.admin ? ' · admin' : '');
+  const guardado = ler('rede_escopo');
+  ESCOPO = DB.bibliotecas.some(b => b.id === guardado) || guardado === '*' ? guardado : (DB.eu.libs[0] || '*');
+  renderTudo();
+}
+
+/* ================= AJUDAS ================= */
+const nomeLib = id => (DB.bibliotecas.find(b => b.id === id) || {}).nome || '—';
+const podeEditar = id => !!id && id !== '*' && (DB.eu.admin || DB.eu.libs.includes(id));
+const minhasLibs = () => DB.bibliotecas.filter(b => podeEditar(b.id));
+const noEscopo = id => ESCOPO === '*' || id === ESCOPO;
+const empAtivo = livroId => DB.emprestimos.find(e => e.livroId === livroId && !e.dataDevolucao);
+
+/** Junta os livros recebidos de fora da rede com os empréstimos entre bibliotecas. */
+function itensRecebidos() {
+  const manuais = DB.recebidos.map(r => ({ ...r, tipo: 'manual' }));
+  const rede = DB.emprestimos.filter(e => e.paraBiblioteca).map(e => {
+    const l = DB.livros.find(x => x.id === e.livroId) || {};
+    return { tipo: 'rede', id: e.id, biblioteca: e.paraBiblioteca, origem: e.biblioteca, titulo: e.titulo, autor: l.autor || '',
+             capa: l.capa || '', isbn: e.isbn, dono: nomeLib(e.biblioteca), dataRecebido: e.dataEmprestimo, dataDevolvido: e.dataDevolucao };
+  });
+  return manuais.concat(rede);
+}
+const recAtivos = () => itensRecebidos().filter(r => !r.dataDevolvido);
+
+/* ================= RENDER ================= */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => mudarTab(b.dataset.tab));
+function mudarTab(t) {
+  document.querySelectorAll('nav button').forEach(b => b.classList.toggle('ativo', b.dataset.tab === t));
+  document.querySelectorAll('main>section').forEach(s => s.classList.toggle('ativo', s.id === 'tab-' + t));
+  if (t !== 'ler') pararCamara();
+  window.scrollTo(0, 0);
+}
+function mudarEscopo(id) { ESCOPO = id; guardar('rede_escopo', id); $('#resultadoLeitura').innerHTML = ''; renderTudo(); }
+function irParaAtrasados() {
+  const a = recAtivos().filter(r => dias(r.dataRecebido) >= DIAS_AVISO && podeEditar(r.biblioteca));
+  if (a.length && ESCOPO !== '*' && !a.some(r => r.biblioteca === ESCOPO)) mudarEscopo(a[0].biblioteca);
+  mudarTab('recebidos');
+}
+
+function renderTudo() {
+  // barra de bibliotecas
+  $('#barraLibs').innerHTML = DB.bibliotecas.map(b =>
+    `<button class="${b.id === ESCOPO ? 'ativo' : ''}" onclick="mudarEscopo('${esc(b.id)}')">${podeEditar(b.id) && !DB.eu.admin ? '⭐ ' : ''}${esc(b.nome)}</button>`).join('')
+    + `<button class="${ESCOPO === '*' ? 'ativo' : ''}" onclick="mudarEscopo('*')">🌐 Toda a rede</button>`;
+
+  // avisos: só dos livros pelos quais eu sou responsável
+  const atr = recAtivos().filter(r => dias(r.dataRecebido) >= DIAS_AVISO && podeEditar(r.biblioteca));
+  $('#aviso').classList.toggle('hidden', !atr.length);
+  $('#aviso').textContent = `⚠️ ${atr.length} livro(s) emprestado(s) à vossa biblioteca há mais de 1 mês — toca para ver`;
+  const atrEscopo = atr.filter(r => noEscopo(r.biblioteca)).length;
+  $('#bolRec').classList.toggle('hidden', !atrEscopo); $('#bolRec').textContent = atrEscopo;
+
+  $('#btnNovoRec').classList.toggle('hidden', !minhasLibs().length);
+  preencherSelect('#fCat', 'Todas as categorias', DB.categorias);
+  preencherSelect('#fDono', 'Todos os donos', [...new Set(DB.livros.filter(l => noEscopo(l.biblioteca)).map(l => l.dono).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt')));
+  pesquisar(); renderEmprestados(); renderRecebidos();
+}
+function preencherSelect(sel, primeiro, valores) {
+  const el = $(sel), atual = el.value;
+  el.innerHTML = `<option value="">${primeiro}</option>` + valores.map(v => `<option>${esc(v)}</option>`).join('');
+  el.value = valores.includes(atual) ? atual : '';
+}
+
+/* ---------- cartões ---------- */
+function capa(o) {
+  return o.capa ? `<img class="capa" src="${esc(o.capa)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=capa>📕</div>'">`
+                : `<div class="capa">${esc(((o.titulo || '?').trim()[0] || '?').toUpperCase())}</div>`;
+}
+function cardLivro(l) {
+  const e = empAtivo(l.id), meu = podeEditar(l.biblioteca);
+  const libBadge = (ESCOPO === '*' || l.biblioteca !== ESCOPO) ? `<span class="badge lib">🏠 ${esc(nomeLib(l.biblioteca))}</span>` : '';
+  const estado = e ? `<span class="badge out">Emprestado a ${esc(e.paraBiblioteca ? nomeLib(e.paraBiblioteca) : e.pessoa)} · há ${dias(e.dataEmprestimo)} dias</span>`
+                   : `<span class="badge in">Disponível</span>`;
+  const meta = [l.categoria, l.dono && 'de ' + l.dono, l.localizacao && '📍 ' + l.localizacao].filter(Boolean).map(esc).join(' · ');
+  const acoes = meu ? `<div class="acoes">
+      ${e ? `<button onclick="devolver('${e.id}')">Já foi devolvido</button>` : `<button onclick="abrirEmprestar('${l.id}')">Emprestar</button>`}
+      <button class="sec" onclick="editarLivro('${l.id}')">Editar</button></div>` : '';
+  return `<article class="card ${l.biblioteca !== ESCOPO && ESCOPO !== '*' ? 'rede' : ''}">${capa(l)}<div class="info">
+    <h3>${esc(l.titulo)}</h3>${l.autor ? `<p>${esc(l.autor)}</p>` : ''}${meta ? `<p>${meta}</p>` : ''}
+    ${l.isbn ? `<p>ISBN ${esc(l.isbn)}</p>` : ''}${libBadge}${estado}${acoes}</div></article>`;
+}
+function cardRecebido(r, comAcoes = true) {
+  const d = dias(r.dataRecebido);
+  const libBadge = ESCOPO === '*' ? `<span class="badge lib">📥 para ${esc(nomeLib(r.biblioteca))}</span>` : '';
+  const badge = r.dataDevolvido ? `<span class="badge in">Devolvido a ${fmt(r.dataDevolvido)}</span>`
+    : d >= DIAS_AVISO ? `<span class="badge atraso">⚠️ Devolver! Está cá há ${d} dias</span>`
+    : `<span class="badge out">Há ${d} dias</span>`;
+  let acoes = '';
+  if (comAcoes && !r.dataDevolvido) {
+    if (r.tipo === 'rede' && (podeEditar(r.biblioteca) || podeEditar(r.origem)))
+      acoes = `<div class="acoes"><button onclick="devolver('${r.id}')">Já devolvemos</button></div>`;
+    if (r.tipo === 'manual' && podeEditar(r.biblioteca))
+      acoes = `<div class="acoes"><button onclick="devolverRecebido('${r.id}')">Já devolvemos</button><button class="sec" onclick="editarRecebido('${r.id}')">Editar</button></div>`;
+  }
+  return `<article class="card">${capa(r)}<div class="info">
+    <h3>${esc(r.titulo)}</h3>${r.autor ? `<p>${esc(r.autor)}</p>` : ''}
+    <p>Emprestado por <b>${r.tipo === 'rede' ? '🏠 ' : ''}${esc(r.dono)}</b> a ${fmt(r.dataRecebido)}${r.comQuem ? ' · está com ' + esc(r.comQuem) : ''}</p>
+    ${libBadge}${badge}${acoes}</div></article>`;
+}
+
+/* ---------- pesquisa ---------- */
+function pesquisar() {
+  const bruto = $('#q').value.trim(), q = norm(bruto), dig = bruto.replace(/[^0-9xX]/g, '').toUpperCase();
+  const cat = $('#fCat').value, dono = $('#fDono').value;
+  const bate = o => !q || norm(o.titulo + ' ' + o.autor).includes(q) || (dig.length >= 3 && String(o.isbn).includes(dig));
+  const filtra = l => (!cat || l.categoria === cat) && (!dono || l.dono === dono) && bate(l);
+
+  const livros = DB.livros.filter(l => noEscopo(l.biblioteca) && filtra(l)).sort(porTitulo);
+  const recs = ($('#fRec').checked && !cat && !dono) ? recAtivos().filter(r => noEscopo(r.biblioteca) && bate(r)).sort(porTitulo) : [];
+  const fora = (ESCOPO !== '*' && (q || cat)) ? DB.livros.filter(l => l.biblioteca !== ESCOPO && filtra(l)).sort(porTitulo) : [];
+
+  const nTotal = DB.livros.filter(l => noEscopo(l.biblioteca)).length;
+  $('#resumo').textContent = `${ESCOPO === '*' ? 'Toda a rede' : nomeLib(ESCOPO)}: ${nTotal} livros`;
+
+  let html = '';
+  if (!nTotal && !recs.length && !fora.length) html = `<div class="vazio">Ainda não há livros aqui.${podeEditar(ESCOPO) ? '<br>Começa no separador <b>📷 Ler ISBN</b>.' : ''}</div>`;
+  else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde a “${esc(bruto || cat || dono)}”.</div>`;
+  else {
+    if (q || cat || dono) html += `<div class="contagem">${livros.length} encontrado(s)${recs.length ? ` + ${recs.length} emprestado(s) por outros` : ''}</div>`;
+    html += livros.map(cardLivro).join('') + recs.map(r => cardRecebido(r)).join('');
+  }
+  if (fora.length) html += `<h3 class="subtitulo">🌐 Noutras bibliotecas da rede (${fora.length})</h3>` + fora.map(cardLivro).join('');
+  $('#resultados').innerHTML = html;
+}
+
+/* ---------- câmara / ISBN ---------- */
+async function alternarCamara() {
+  if (scanner) return pararCamara();
+  $('#resultadoLeitura').innerHTML = '';
+  scanner = new Html5Qrcode('leitor', { formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13], experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false });
+  try {
+    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 130 } }, txt => {
+      if (/^97[89]\d{10}$/.test(txt)) { if (navigator.vibrate) navigator.vibrate(120); pararCamara(); procurarIsbn(txt); }
+    });
+    $('#btnCam').textContent = '⏹ Parar câmara';
+  } catch (e) { scanner = null; toast('Não consegui abrir a câmara. Confirma a permissão no browser ou escreve o ISBN.', 4500); }
+}
+async function pararCamara() {
+  if (!scanner) return;
+  const s = scanner; scanner = null;
+  try { await s.stop(); s.clear(); } catch (e) {}
+  $('#btnCam').textContent = '📷 Ler código de barras';
+}
+
+async function procurarIsbn(isbn) {
+  isbn = String(isbn || '').trim();
+  if (!isbn) return toast('Escreve um ISBN');
+  $('#isbnManual').value = isbn;
+  let r;
+  try { r = await api('lookup', { isbn }); } catch (e) { return toast('⚠️ ' + e.message, 4000); }
+
+  const aqui = ESCOPO === '*' ? [] : r.existentes.filter(l => l.biblioteca === ESCOPO);
+  const naRede = r.existentes.filter(l => !aqui.includes(l));
+  let html = '';
+  if (aqui.length) html += `<div class="caixa ok"><h3>✅ Já está nesta biblioteca${aqui.length > 1 ? ` (${aqui.length} exemplares)` : ''}</h3></div>` + aqui.map(cardLivro).join('');
+  if (naRede.length) html += `<div class="caixa rede"><h3>🌐 Existe na rede: ${[...new Set(naRede.map(l => nomeLib(l.biblioteca)))].map(esc).join(', ')}</h3></div>` + naRede.map(cardLivro).join('');
+  if (r.recebidos.length) html += `<div class="caixa info"><h3>📥 Este livro está emprestado a alguém da rede</h3></div>` + r.recebidos.map(x => cardRecebido({ ...x, tipo: 'manual' })).join('');
+
+  if (minhasLibs().length) {
+    const jaHa = r.existentes.length || r.recebidos.length;
+    if (!r.meta && !jaHa) html += `<div class="caixa info">Não encontrei este ISBN online — preenche os dados à mão.</div>`;
+    if (jaHa) html += `<button class="btn sec" onclick="this.remove();$('#formNovo').classList.remove('hidden')">Registar mesmo assim</button>`;
+    html += `<div id="formNovo" class="${jaHa ? 'hidden' : ''}">${formLivro({ isbn: r.isbn, ...(r.meta || {}) }, 'novo', 'n-')}</div>`;
+  } else if (!r.existentes.length) html += `<div class="caixa info">Ninguém na rede tem este livro.</div>`;
+  $('#resultadoLeitura').innerHTML = html;
+  ligarForm('n-');
+}
+function novoSemIsbn() {
+  pararCamara();
+  if (!minhasLibs().length) return toast('Não tens nenhuma biblioteca para editar.');
+  $('#resultadoLeitura').innerHTML = `<div id="formNovo">${formLivro({}, 'novo', 'n-')}</div>`;
+  ligarForm('n-');
+}
+function novoRecebido() {
+  mudarTab('ler');
+  $('#resultadoLeitura').innerHTML = `<div class="dica">Lê o código de barras acima para preencher automaticamente, ou preenche aqui:</div><div id="formNovo">${formLivro({}, 'novo', 'n-', 'recebido')}</div>`;
+  ligarForm('n-');
+}
+
+/* ---------- formulário ---------- */
+function campoBiblioteca(px, valor) {
+  const libs = minhasLibs();
+  const sel = valor && podeEditar(valor) ? valor : (podeEditar(ESCOPO) ? ESCOPO : (libs[0] || {}).id);
+  return `<label>Biblioteca</label><select id="${px}biblioteca">${libs.map(b => `<option value="${esc(b.id)}" ${b.id === sel ? 'selected' : ''}>${esc(b.nome)}</option>`).join('')}</select>`;
+}
+// modo: 'novo' | 'editar' | 'editarRec'
+function formLivro(d, modo, px, tipoInicial = 'nosso') {
+  const tipo = modo === 'editarRec' ? 'recebido' : modo === 'editar' ? 'nosso' : tipoInicial;
+  const v = k => esc(d[k] || '');
+  return `<form onsubmit="guardarForm(event,'${px}','${modo}')" data-id="${v('id')}">
+    ${modo === 'novo' ? `<div class="tipo" id="${px}tipos">
+      <label><input type="radio" name="${px}tipo" value="nosso" ${tipo === 'nosso' ? 'checked' : ''} onchange="mudarTipo('${px}')">📗 É nosso</label>
+      <label><input type="radio" name="${px}tipo" value="recebido" ${tipo === 'recebido' ? 'checked' : ''} onchange="mudarTipo('${px}')">📥 Emprestaram-nos</label>
+    </div>` : `<input type="hidden" name="${px}tipo" value="${tipo}">`}
+    ${d.capa ? `<img src="${v('capa')}" alt="" style="height:110px;border-radius:6px;margin-top:8px">` : ''}
+    <input type="hidden" id="${px}capa" value="${v('capa')}">
+    ${campoBiblioteca(px, d.biblioteca)}
+    <label>Título *</label><input id="${px}titulo" value="${v('titulo')}" required>
+    <label>Autor</label><input id="${px}autor" value="${v('autor')}">
+    <div class="grid2">
+      <div><label>ISBN</label><input id="${px}isbn" value="${v('isbn')}" inputmode="numeric"></div>
+      <div class="${px}so-nosso"><label>Ano</label><input id="${px}ano" value="${v('ano')}" inputmode="numeric"></div>
+    </div>
+    <div class="${px}so-nosso">
+      <label>Editora</label><input id="${px}editora" value="${v('editora')}">
+      <label>Categoria</label>${campoCategoria(px, d.categoria)}
+      ${d.categoriaSugerida && !d.categoria ? `<div class="dica">Sugestão da internet: “${esc(d.categoriaSugerida)}”</div>` : ''}
+      ${campoPessoa(px + 'dono', 'De quem é (dono)', modo === 'editarRec' ? '' : d.dono)}
+      <label>Onde está (estante, quarto…)</label><input id="${px}localizacao" value="${v('localizacao')}">
+    </div>
+    <div class="${px}so-recebido">
+      ${campoPessoa(px + 'donoRec', 'Quem nos emprestou *', modo === 'editarRec' ? d.dono : '')}
+      <div class="dica">Se for alguém da rede, empresta-se a partir da biblioteca dessa pessoa e aparece aqui sozinho.</div>
+      ${campoPessoa(px + 'comQuem', 'Está com (quem o está a ler)', d.comQuem)}
+      <label>Data em que o recebemos</label><input type="date" id="${px}dataRecebido" value="${d.dataRecebido || hojeISO()}">
+    </div>
+    <label>Notas</label><textarea id="${px}notas">${v('notas')}</textarea>
+    <div class="botoes">
+      ${modo === 'editar' ? `<button type="button" class="btn perigo" onclick="apagarLivro('${v('id')}')">Apagar</button>` : ''}
+      ${modo === 'editarRec' ? `<button type="button" class="btn perigo" onclick="apagarRecebido('${v('id')}')">Apagar</button>` : ''}
+      ${modo !== 'novo' ? `<button type="button" class="btn sec" onclick="fecharDlg()">Cancelar</button>` : ''}
+      <button class="btn">💾 Guardar</button>
+    </div>
+  </form>`;
+}
+function ligarForm(px) { if (!$('#' + px + 'titulo')) return; mudarTipo(px); ['dono', 'donoRec', 'comQuem'].forEach(k => mostrarChips(px + k)); }
+function tipoDe(px) { const el = document.querySelector(`[name="${px}tipo"]:checked`) || document.querySelector(`[name="${px}tipo"]`); return el ? el.value : 'nosso'; }
+function mudarTipo(px) {
+  const t = tipoDe(px);
+  document.querySelectorAll('.' + px + 'so-nosso').forEach(e => e.classList.toggle('hidden', t !== 'nosso'));
+  document.querySelectorAll('.' + px + 'so-recebido').forEach(e => e.classList.toggle('hidden', t !== 'recebido'));
+  document.querySelectorAll(`#${px}tipos label`).forEach(l => l.classList.toggle('sel', l.querySelector('input').checked));
+}
+function campoCategoria(px, valor) {
+  const lista = [...DB.categorias]; if (valor && !lista.includes(valor)) lista.push(valor);
+  return `<select id="${px}categoria" onchange="if(this.value==='__nova')novaCategoria(this)">
+    <option value="">— sem categoria —</option>
+    ${lista.map(c => `<option ${c === valor ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+    <option value="__nova">➕ Nova categoria…</option></select>`;
+}
+async function novaCategoria(sel) {
+  const c = (prompt('Nome da nova categoria:') || '').trim();
+  if (!c) { sel.value = ''; return; }
+  try { DB = await api('addCategoria', { categoria: c }); } catch (e) { toast('⚠️ ' + e.message); }
+  const opt = document.createElement('option'); opt.textContent = c;
+  sel.insertBefore(opt, sel.querySelector('[value="__nova"]')); sel.value = c;
+  preencherSelect('#fCat', 'Todas as categorias', DB.categorias);
+}
+
+/* nomes: escreve-se uma vez e depois é só tocar */
+function campoPessoa(id, rotulo, valor = '') {
+  return `<label>${rotulo}</label><input id="${id}" value="${esc(valor || '')}" autocomplete="off" oninput="mostrarChips('${id}')">
+          <div class="chips" id="${id}-chips"></div>`;
+}
+function mostrarChips(id, libsExtra) {
+  const inp = $('#' + id); if (!inp) return;
+  libsExtra = libsExtra || inp._libs || [];
+  const q = norm(inp.value);
+  const passa = n => norm(n) !== q && (!q || norm(n).includes(q));
+  const libs = libsExtra.filter(b => passa(b.nome)).map(b => `<button type="button" class="chip lib" onclick="escolherPessoa('${id}',this.dataset.n)" data-n="${esc(b.nome)}">🏠 ${esc(b.nome)}</button>`);
+  const pessoas = DB.pessoas.filter(passa).slice(0, 10).map(p => `<button type="button" class="chip" onclick="escolherPessoa('${id}',this.textContent)">${esc(p)}</button>`);
+  $('#' + id + '-chips').innerHTML = libs.concat(pessoas).join('');
+  inp._libs = libsExtra;
+}
+function escolherPessoa(id, nome) { const inp = $('#' + id); inp.value = nome; mostrarChips(id, inp._libs || []); }
+
+async function guardarForm(ev, px, modo) {
+  ev.preventDefault();
+  const g = k => ($('#' + px + k) || {}).value?.trim() || '';
+  const base = { biblioteca: g('biblioteca'), isbn: g('isbn'), titulo: g('titulo'), autor: g('autor'), notas: g('notas'), capa: g('capa') };
+  if (!base.biblioteca) return toast('Escolhe a biblioteca');
+  const id = ev.target.dataset.id;
+  let ok;
+  if (tipoDe(px) === 'recebido') {
+    if (!g('donoRec')) return toast('Indica quem vos emprestou o livro');
+    const p = { ...base, dono: g('donoRec'), comQuem: g('comQuem'), dataRecebido: g('dataRecebido') };
+    ok = modo === 'editarRec' ? await gravar('editRecebido', { id, ...p }, 'Atualizado ✔') : await gravar('addRecebido', p, 'Registado como emprestado a nós ✔');
+  } else {
+    const p = { ...base, ano: g('ano'), editora: g('editora'), categoria: g('categoria'), dono: g('dono'), localizacao: g('localizacao') };
+    ok = modo === 'editar' ? await gravar('editLivro', { id, ...p }, 'Atualizado ✔') : await gravar('addLivro', p, 'Livro guardado ✔');
+  }
+  if (!ok) return;
+  if (modo === 'novo') { $('#resultadoLeitura').innerHTML = ''; $('#isbnManual').value = ''; }
+  else fecharDlg();
+}
+
+/* ---------- diálogos ---------- */
+function abrirDlg(html) { $('#dlgCorpo').innerHTML = html; $('#dlg').showModal(); }
+function fecharDlg() { $('#dlg').close(); }
+$('#dlg').addEventListener('click', e => { if (e.target.id === 'dlg') fecharDlg(); });
+
+function editarLivro(id) {
+  const l = DB.livros.find(x => x.id === id); if (!l) return;
+  abrirDlg(`<h2>Editar livro</h2>${formLivro(l, 'editar', 'e-')}`); ligarForm('e-');
+}
+function editarRecebido(id) {
+  const r = DB.recebidos.find(x => x.id === id); if (!r) return;
+  abrirDlg(`<h2>Editar livro emprestado a nós</h2>${formLivro(r, 'editarRec', 'e-')}`); ligarForm('e-');
+}
+async function apagarLivro(id) { if (confirm('Apagar este livro do inventário?') && await gravar('delLivro', { id }, 'Apagado')) fecharDlg(); }
+async function apagarRecebido(id) { if (confirm('Apagar este registo?') && await gravar('delRecebido', { id }, 'Apagado')) fecharDlg(); }
+
+function abrirEmprestar(livroId) {
+  const l = DB.livros.find(x => x.id === livroId);
+  abrirDlg(`<h2>Emprestar</h2><p style="margin:0;color:var(--suave)">${esc(l.titulo)}</p>
+    ${campoPessoa('emp-pessoa', 'A quem? (escolhe uma biblioteca 🏠 da rede ou escreve um nome)')}
+    <label>Data</label><input type="date" id="emp-data" value="${hojeISO()}">
+    <label>Notas</label><input id="emp-notas">
+    <div class="botoes"><button class="btn sec" onclick="fecharDlg()">Cancelar</button>
+    <button class="btn" onclick="confirmarEmprestimo('${livroId}')">📤 Emprestar</button></div>`);
+  mostrarChips('emp-pessoa', DB.bibliotecas.filter(b => b.id !== l.biblioteca));
+}
+async function confirmarEmprestimo(livroId) {
+  const pessoa = $('#emp-pessoa').value.trim();
+  if (!pessoa) return toast('Escreve ou escolhe o nome');
+  const l = DB.livros.find(x => x.id === livroId);
+  const lib = DB.bibliotecas.find(b => b.id !== l.biblioteca && norm(b.nome) === norm(pessoa));
+  const payload = { livroId, pessoa, paraBiblioteca: lib ? lib.id : '', data: $('#emp-data').value, notas: $('#emp-notas').value };
+  if (await gravar('emprestar', payload, `Emprestado a ${pessoa} ✔`)) fecharDlg();
+}
+async function devolver(empId) { if (confirm('Marcar este livro como devolvido hoje?')) gravar('devolver', { id: empId, data: hojeISO() }, 'Devolvido ✔'); }
+async function devolverRecebido(id) { if (confirm('Confirmas que já devolveram este livro ao dono?')) gravar('devolverRecebido', { id, data: hojeISO() }, 'Marcado como devolvido ✔'); }
+
+/* ---------- separadores de empréstimos ---------- */
+function renderEmprestados() {
+  const meus = DB.emprestimos.filter(e => noEscopo(e.biblioteca));
+  const ativos = meus.filter(e => !e.dataDevolucao).sort((a, b) => a.dataEmprestimo.localeCompare(b.dataEmprestimo));
+  $('#listaEmp').innerHTML = ativos.length ? ativos.map(e => {
+    const l = DB.livros.find(x => x.id === e.livroId) || { titulo: e.titulo };
+    const quem = e.paraBiblioteca ? '🏠 ' + nomeLib(e.paraBiblioteca) : e.pessoa;
+    return `<article class="card">${capa(l)}<div class="info"><h3>${esc(e.titulo)}</h3>
+      <p>Com <b>${esc(quem)}</b> desde ${fmt(e.dataEmprestimo)}</p>
+      ${ESCOPO === '*' ? `<span class="badge lib">de ${esc(nomeLib(e.biblioteca))}</span>` : ''}
+      <span class="badge out">Há ${dias(e.dataEmprestimo)} dias</span>${e.notas ? `<p>${esc(e.notas)}</p>` : ''}
+      ${podeEditar(e.biblioteca) || podeEditar(e.paraBiblioteca) ? `<div class="acoes"><button onclick="devolver('${e.id}')">Já foi devolvido</button></div>` : ''}</div></article>`;
+  }).join('') : `<div class="vazio">Nenhum livro emprestado neste momento.</div>`;
+
+  const hist = meus.filter(e => e.dataDevolucao).sort((a, b) => b.dataDevolucao.localeCompare(a.dataDevolucao)).slice(0, 100);
+  $('#histEmp').innerHTML = hist.length ? hist.map(e => `<p class="dica">• <b>${esc(e.titulo)}</b> — ${esc(e.paraBiblioteca ? nomeLib(e.paraBiblioteca) : e.pessoa)}, de ${fmt(e.dataEmprestimo)} a ${fmt(e.dataDevolucao)}</p>`).join('') : '<p class="dica">Sem histórico ainda.</p>';
+}
+function renderRecebidos() {
+  const todos = itensRecebidos().filter(r => noEscopo(r.biblioteca));
+  const ativos = todos.filter(r => !r.dataDevolvido).sort((a, b) => a.dataRecebido.localeCompare(b.dataRecebido));
+  $('#listaRec').innerHTML = ativos.length ? ativos.map(r => cardRecebido(r)).join('') : `<div class="vazio">Não há livros emprestados por outras pessoas.</div>`;
+  const hist = todos.filter(r => r.dataDevolvido).sort((a, b) => b.dataDevolvido.localeCompare(a.dataDevolvido)).slice(0, 100);
+  $('#histRec').innerHTML = hist.length ? hist.map(r => cardRecebido(r, false)).join('') : '<p class="dica">Sem histórico ainda.</p>';
+}
+
+/* ---------- arranque ---------- */
+if (API_URL.startsWith('COLA') || CLIENT_ID.startsWith('COLA')) {
+  $('#msgLogin').classList.remove('hidden');
+  $('#msgLogin').textContent = 'Falta configurar o API_URL e o CLIENT_ID no ficheiro.';
+} else prepararLogin();
+</script>
+</body>
+</html>
