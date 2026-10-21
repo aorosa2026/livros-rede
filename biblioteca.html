@@ -357,7 +357,7 @@ function cardLivro(l) {
   const libBadge = (ESCOPO === '*' || l.biblioteca !== ESCOPO) ? `<span class="badge lib">🏠 ${esc(nomeLib(l.biblioteca))}</span>` : '';
   const estado = e ? `<span class="badge out">Emprestado a ${esc(e.paraBiblioteca ? nomeLib(e.paraBiblioteca) : e.pessoa)} · há ${dias(e.dataEmprestimo)} dias</span>`
                    : `<span class="badge in">Disponível</span>`;
-  const meta = [l.categoria, l.dono && 'de ' + l.dono, l.localizacao && '📍 ' + l.localizacao].filter(Boolean).map(esc).join(' · ');
+  const meta = [l.categoria, l.dono && 'de ' + l.dono].filter(Boolean).map(esc).join(' · ');
   const acoes = meu ? `<div class="acoes">
       ${e ? `<button onclick="devolver('${e.id}')">Já foi devolvido</button>` : `<button onclick="abrirEmprestar('${l.id}')">Emprestar</button>`}
       <button class="sec" onclick="editarLivro('${l.id}')">Editar</button></div>` : '';
@@ -541,10 +541,9 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
     </div>
     <div class="${px}so-nosso">
       <label>Editora</label><input id="${px}editora" value="${v('editora')}">
-      <label>Categoria</label>${campoCategoria(px, d.categoria)}
-      ${d.categoriaSugerida && !d.categoria ? `<div class="dica">Sugestão da internet: “${esc(d.categoriaSugerida)}”</div>` : ''}
-      ${campoPessoa(px + 'dono', 'De quem é (dono)', modo === 'editarRec' ? '' : d.dono)}
-      <label>Onde está (estante, quarto…)</label><input id="${px}localizacao" value="${v('localizacao')}">
+      <label>Categoria</label>${campoCategoria(px, d.categoria || (DB.categorias.includes(d.categoriaSugerida) ? d.categoriaSugerida : ''))}
+      ${d.categoriaSugerida && !d.categoria ? `<div class="dica">Categoria sugerida pela Biblioteca Nacional — confirma.</div>` : ''}
+      ${campoPessoa(px + 'dono', 'De quem é (dono)', modo === 'editarRec' ? '' : (modo === 'novo' ? (d.dono || ler('rede_ultimoDono') || '') : d.dono))}
     </div>
     <div class="${px}so-recebido">
       ${campoPessoa(px + 'donoRec', 'Quem nos emprestou *', modo === 'editarRec' ? d.dono : '')}
@@ -614,7 +613,8 @@ async function guardarForm(ev, px, modo) {
     const p = { ...base, dono: g('donoRec'), comQuem: g('comQuem'), dataRecebido: g('dataRecebido') };
     ok = modo === 'editarRec' ? await gravar('editRecebido', { id, ...p }, 'Atualizado ✔') : await gravar('addRecebido', p, 'Registado como emprestado a nós ✔');
   } else {
-    const p = { ...base, ano: g('ano'), editora: g('editora'), categoria: g('categoria'), dono: g('dono'), localizacao: g('localizacao') };
+    const p = { ...base, ano: g('ano'), editora: g('editora'), categoria: g('categoria'), dono: g('dono') };
+    if (modo === 'novo') guardar('rede_ultimoDono', p.dono || null);   // o próximo livro já vem com este dono
     ok = modo === 'editar' ? await gravar('editLivro', { id, ...p }, 'Atualizado ✔') : await gravar('addLivro', p, 'Livro guardado ✔');
   }
   if (!ok) return;
