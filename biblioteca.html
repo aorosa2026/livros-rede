@@ -69,6 +69,15 @@
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
   .chip{border:1px solid var(--linha);background:#fff;border-radius:20px;padding:5px 11px;font-size:.85rem;color:var(--tinta)}
   .chip.lib{background:var(--rede-bg);border-color:#cdd9f5;color:var(--rede)}
+  .chip.sel{background:var(--primaria);border-color:var(--primaria);color:#fff}
+  .chip.novo{border-style:dashed;color:var(--primaria)}
+  .barra-filtros{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .toggle{border:1.5px solid var(--primaria);background:#fff;color:var(--primaria);border-radius:20px;padding:7px 14px;font-weight:600;font-size:.9rem}
+  .toggle.on{background:var(--primaria);color:#fff}
+  .filtro-ativo{display:inline-flex;align-items:center;gap:6px;background:var(--rede-bg);color:var(--rede);border-radius:20px;padding:6px 6px 6px 12px;font-size:.88rem;font-weight:600}
+  .filtro-ativo button{border:0;background:rgba(0,0,0,.08);color:inherit;border-radius:50%;width:24px;height:24px;line-height:1}
+  .lnk{color:inherit;text-decoration:underline dotted;cursor:pointer}
+  .info .colecao{color:var(--primaria);font-weight:600}
   .caixa{border-radius:var(--raio);padding:12px 14px;margin:12px 0}
   .caixa.ok{background:var(--ok-bg);color:var(--ok)}
   .caixa.info{background:var(--info-bg);color:#6b4600}
@@ -151,9 +160,14 @@
         <div class="painel-topo"><b id="painelTitulo"></b><button onclick="fecharPainel()" aria-label="Fechar">✕</button></div>
         <div id="resultadoLeitura"></div>
       </div>
+      <div class="barra-filtros">
+        <button id="btnInf" class="toggle" onclick="alternarInfantis()">🧸 Só infantis</button>
+        <span id="filtroAutor"></span>
+      </div>
       <div class="filtros">
         <select id="fCat" onchange="pesquisar()"><option value="">Todas as categorias</option></select>
         <select id="fDono" onchange="pesquisar()"><option value="">Todos os donos</option></select>
+        <select id="fCol" onchange="pesquisar()" style="grid-column:1/-1"><option value="">Todas as coleções</option></select>
       </div>
       <label class="check"><input type="checkbox" id="fRec" checked onchange="pesquisar()"> Incluir livros que nos emprestaram</label>
       <div id="resumo" class="contagem"></div>
@@ -190,15 +204,20 @@ const DIAS_AVISO = 30;
    Escolhe cores em https://htmlcolorcodes.com (copia o código #......). */
 const CORES = {
   b1:  '#7a3e2a',   // Francisco & Guilherme — terracota
-  b2:  '#63e0d6',   // Bernardo & Tomás — azul turquesa
+  b2:  '#1a9e94',   // Bernardo & Tomás — azul turquesa
   b3:  '#ff00aa',   // Benedita & Leonor — rosa
-  b4:  '#7b3f8c',   // Sara — roxo
+  b4:  '#e38383',   // André — vermelho
+  b5:  '#7b3f8c',   // Sara — roxo
   '*': '#3f4450'    // 🌐 Toda a rede — cinzento
 };
 const CORES_EXTRA = ['#a0522d', '#00796b', '#c2185b', '#5d4037', '#455a64']; // para bibliotecas novas sem cor definida
+
+/* ============ BOTÃO RÁPIDO "SÓ INFANTIS" ============
+   Categoria(s) que o botão 🧸 filtra. Tem de ser o nome exato da folha Categorias. */
+const CATEGORIAS_INFANTIS = ['Infantil'];
 /* ======================================================= */
 
-let TOKEN = '', DB = null, ESCOPO = '*', scanner = null;
+let TOKEN = '', DB = null, ESCOPO = '*', scanner = null, FILTRO_AUTOR = '';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -209,6 +228,11 @@ const dias = iso => { if (!iso) return 0; const [y, m, d] = iso.split('-').map(N
 const porTitulo = (a, b) => a.titulo.localeCompare(b.titulo, 'pt');
 const guardar = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
 const ler = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+/** "Francisco, Guilherme" → ['Francisco','Guilherme'] (vários donos / várias categorias / vários autores) */
+const lista = s => String(s || '').split(',').map(x => x.trim()).filter(Boolean);
+const temItem = (s, v) => lista(s).some(x => norm(x) === norm(v));
+const unicos = arr => [...new Map(arr.map(x => [norm(x), x])).values()].sort((a, b) => a.localeCompare(b, 'pt'));
+const jsArg = s => esc(JSON.stringify(String(s)));   // texto seguro dentro de onclick="..."
 
 /* ================= LOGIN GOOGLE ================= */
 function payloadJWT(t) {
@@ -268,7 +292,7 @@ async function arrancar() {
     return;
   }
   $('#ecraLogin').classList.add('hidden'); $('#app').classList.remove('hidden');
-  $('#meuEmail').textContent = DB.eu.email + (DB.eu.admin ? ' · admin' : '');
+  $('#meuEmail').textContent = DB.eu.email + (DB.eu.admin ? ' · admin' : (DB.eu.libs.length ? '' : ' · só consulta'));
   const guardado = ler('rede_escopo');
   ESCOPO = DB.bibliotecas.some(b => b.id === guardado) || guardado === '*' ? guardado : (DB.eu.libs[0] || '*');
   renderTudo();
@@ -338,7 +362,12 @@ function renderTudo() {
 
   $('#btnNovoRec').classList.toggle('hidden', !minhasLibs().length);
   preencherSelect('#fCat', 'Todas as categorias', DB.categorias);
-  preencherSelect('#fDono', 'Todos os donos', [...new Set(DB.livros.filter(l => noEscopo(l.biblioteca)).map(l => l.dono).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt')));
+  const visiveis = DB.livros.filter(l => noEscopo(l.biblioteca));
+  preencherSelect('#fDono', 'Todos os donos', unicos(visiveis.flatMap(l => lista(l.dono))));
+  const colecoes = unicos(DB.livros.map(l => l.colecao || '').filter(Boolean));
+  preencherSelect('#fCol', 'Todas as coleções', colecoes);
+  $('#fCol').classList.toggle('hidden', !colecoes.length);
+  $('#btnInf').classList.toggle('on', ler('rede_inf') === '1');
   pesquisar(); renderEmprestados(); renderRecebidos();
 }
 function preencherSelect(sel, primeiro, valores) {
@@ -357,12 +386,15 @@ function cardLivro(l) {
   const libBadge = (ESCOPO === '*' || l.biblioteca !== ESCOPO) ? `<span class="badge lib">🏠 ${esc(nomeLib(l.biblioteca))}</span>` : '';
   const estado = e ? `<span class="badge out">Emprestado a ${esc(e.paraBiblioteca ? nomeLib(e.paraBiblioteca) : e.pessoa)} · há ${dias(e.dataEmprestimo)} dias</span>`
                    : `<span class="badge in">Disponível</span>`;
-  const meta = [l.categoria, l.dono && 'de ' + l.dono].filter(Boolean).map(esc).join(' · ');
+  const meta = [lista(l.categoria).join(' · '), l.dono && 'de ' + lista(l.dono).join(', ')].filter(Boolean).map(esc).join(' · ');
+  // autores e coleção clicáveis: tocar mostra todos os livros desse autor / coleção
+  const autores = lista(l.autor).map(a => `<a class="lnk" onclick="filtrarAutor(${jsArg(a)})">${esc(a)}</a>`).join(', ');
+  const colecao = l.colecao ? `<p class="colecao"><a class="lnk" onclick="filtrarColecao(${jsArg(l.colecao)})">📚 ${esc(l.colecao)}</a></p>` : '';
   const acoes = meu ? `<div class="acoes">
       ${e ? `<button onclick="devolver('${e.id}')">Já foi devolvido</button>` : `<button onclick="abrirEmprestar('${l.id}')">Emprestar</button>`}
       <button class="sec" onclick="editarLivro('${l.id}')">Editar</button></div>` : '';
   return `<article class="card ${l.biblioteca !== ESCOPO && ESCOPO !== '*' ? 'rede' : ''}">${capa(l)}<div class="info">
-    <h3>${esc(l.titulo)}</h3>${l.autor ? `<p>${esc(l.autor)}</p>` : ''}${meta ? `<p>${meta}</p>` : ''}
+    <h3>${esc(l.titulo)}</h3>${autores ? `<p>${autores}</p>` : ''}${colecao}${meta ? `<p>${meta}</p>` : ''}
     ${l.isbn ? `<p>ISBN ${esc(l.isbn)}</p>` : ''}${libBadge}${estado}${acoes}</div></article>`;
 }
 function cardRecebido(r, comAcoes = true) {
@@ -385,24 +417,42 @@ function cardRecebido(r, comAcoes = true) {
 }
 
 /* ---------- pesquisa ---------- */
+/* ---------- filtros rápidos ---------- */
+function alternarInfantis() {
+  guardar('rede_inf', ler('rede_inf') === '1' ? null : '1');
+  $('#btnInf').classList.toggle('on', ler('rede_inf') === '1');
+  pesquisar();
+}
+function filtrarAutor(a) { FILTRO_AUTOR = a; mudarTab('pesquisa'); fecharDlg(); fecharPainel(); pesquisar(); }
+function filtrarColecao(c) { $('#fCol').value = c; mudarTab('pesquisa'); fecharDlg(); fecharPainel(); pesquisar(); }
+function limparAutor() { FILTRO_AUTOR = ''; pesquisar(); }
+
 function pesquisar() {
   const bruto = $('#q').value.trim(), q = norm(bruto), dig = bruto.replace(/[^0-9xX]/g, '').toUpperCase();
-  const cat = $('#fCat').value, dono = $('#fDono').value;
-  const bate = o => !q || norm(o.titulo + ' ' + o.autor).includes(q) || (dig.length >= 3 && String(o.isbn).includes(dig));
-  const filtra = l => (!cat || l.categoria === cat) && (!dono || l.dono === dono) && bate(l);
+  const cat = $('#fCat').value, dono = $('#fDono').value, col = $('#fCol').value;
+  const inf = ler('rede_inf') === '1';
+  // texto: título, autor, coleção ou ISBN
+  const bate = o => !q || norm(o.titulo + ' ' + o.autor + ' ' + (o.colecao || '')).includes(q) || (dig.length >= 3 && String(o.isbn).includes(dig));
+  const filtra = l => (!cat || temItem(l.categoria, cat)) && (!dono || temItem(l.dono, dono))
+    && (!col || norm(l.colecao) === norm(col)) && (!FILTRO_AUTOR || temItem(l.autor, FILTRO_AUTOR))
+    && (!inf || CATEGORIAS_INFANTIS.some(c => temItem(l.categoria, c))) && bate(l);
+  const filtrosDeLivro = cat || dono || col || FILTRO_AUTOR || inf;   // livros recebidos não têm estes dados
+
+  $('#filtroAutor').innerHTML = FILTRO_AUTOR
+    ? `<span class="filtro-ativo">✍️ ${esc(FILTRO_AUTOR)}<button onclick="limparAutor()" aria-label="Tirar filtro">✕</button></span>` : '';
 
   const livros = DB.livros.filter(l => noEscopo(l.biblioteca) && filtra(l)).sort(porTitulo);
-  const recs = ($('#fRec').checked && !cat && !dono) ? recAtivos().filter(r => noEscopo(r.biblioteca) && bate(r)).sort(porTitulo) : [];
-  const fora = (ESCOPO !== '*' && (q || cat)) ? DB.livros.filter(l => l.biblioteca !== ESCOPO && filtra(l)).sort(porTitulo) : [];
+  const recs = ($('#fRec').checked && !filtrosDeLivro) ? recAtivos().filter(r => noEscopo(r.biblioteca) && bate(r)).sort(porTitulo) : [];
+  const fora = (ESCOPO !== '*' && (q || cat || col || FILTRO_AUTOR)) ? DB.livros.filter(l => l.biblioteca !== ESCOPO && filtra(l)).sort(porTitulo) : [];
 
   const nTotal = DB.livros.filter(l => noEscopo(l.biblioteca)).length;
   $('#resumo').textContent = `${ESCOPO === '*' ? 'Toda a rede' : nomeLib(ESCOPO)}: ${nTotal} livros`;
 
   let html = '';
   if (!nTotal && !recs.length && !fora.length) html = `<div class="vazio">Ainda não há livros aqui.${podeEditar(ESCOPO) ? '<br>Carrega em <b>📷</b> e aponta para o código de barras de um livro.' : ''}</div>`;
-  else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde a “${esc(bruto || cat || dono)}”.</div>`;
+  else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde à pesquisa${inf ? ' (com o filtro 🧸 Só infantis ligado)' : ''}.</div>`;
   else {
-    if (q || cat || dono) html += `<div class="contagem">${livros.length} encontrado(s)${recs.length ? ` + ${recs.length} emprestado(s) por outros` : ''}</div>`;
+    if (q || filtrosDeLivro) html += `<div class="contagem">${livros.length} encontrado(s)${recs.length ? ` + ${recs.length} emprestado(s) por outros` : ''}</div>`;
     html += livros.map(cardLivro).join('') + recs.map(r => cardRecebido(r)).join('');
   }
   if (fora.length) html += `<h3 class="subtitulo">🌐 Noutras bibliotecas da rede (${fora.length})</h3>` + fora.map(cardLivro).join('');
@@ -541,9 +591,12 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
     </div>
     <div class="${px}so-nosso">
       <label>Editora</label><input id="${px}editora" value="${v('editora')}">
-      <label>Categoria</label>${campoCategoria(px, d.categoria || (DB.categorias.includes(d.categoriaSugerida) ? d.categoriaSugerida : ''))}
+      <label>Coleção</label><input id="${px}colecao" value="${v('colecao')}" list="listaColecoes" placeholder="ex.: Uma Aventura, Bolinha…">
+      <datalist id="listaColecoes">${unicos(DB.livros.map(l => l.colecao || '').filter(Boolean)).map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+      <label>Categorias <span class="dica">(toca para escolher uma ou várias)</span></label>
+      ${campoCategoria(px, d.categoria || (DB.categorias.includes(d.categoriaSugerida) ? d.categoriaSugerida : ''))}
       ${d.categoriaSugerida && !d.categoria ? `<div class="dica">Categoria sugerida pela Biblioteca Nacional — confirma.</div>` : ''}
-      ${campoPessoa(px + 'dono', 'De quem é (dono)', modo === 'editarRec' ? '' : (modo === 'novo' ? (d.dono || ler('rede_ultimoDono') || '') : d.dono))}
+      ${campoPessoa(px + 'dono', 'Donos <span class="dica">(um ou vários)</span>', modo === 'editarRec' ? '' : (modo === 'novo' ? (d.dono || ler('rede_ultimoDono') || '') : d.dono), true)}
     </div>
     <div class="${px}so-recebido">
       ${campoPessoa(px + 'donoRec', 'Quem nos emprestou *', modo === 'editarRec' ? d.dono : '')}
@@ -560,7 +613,7 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
     </div>
   </form>`;
 }
-function ligarForm(px) { if (!$('#' + px + 'titulo')) return; mudarTipo(px); ['dono', 'donoRec', 'comQuem'].forEach(k => mostrarChips(px + k)); }
+function ligarForm(px) { if (!$('#' + px + 'titulo')) return; mudarTipo(px); renderCategorias(px); ['dono', 'donoRec', 'comQuem'].forEach(k => mostrarChips(px + k)); }
 function tipoDe(px) { const el = document.querySelector(`[name="${px}tipo"]:checked`) || document.querySelector(`[name="${px}tipo"]`); return el ? el.value : 'nosso'; }
 function mudarTipo(px) {
   const t = tipoDe(px);
@@ -568,38 +621,76 @@ function mudarTipo(px) {
   document.querySelectorAll('.' + px + 'so-recebido').forEach(e => e.classList.toggle('hidden', t !== 'recebido'));
   document.querySelectorAll(`#${px}tipos label`).forEach(l => l.classList.toggle('sel', l.querySelector('input').checked));
 }
+/* categorias: várias por livro, guardadas como "Infantil, Animais" */
 function campoCategoria(px, valor) {
-  const lista = [...DB.categorias]; if (valor && !lista.includes(valor)) lista.push(valor);
-  return `<select id="${px}categoria" onchange="if(this.value==='__nova')novaCategoria(this)">
-    <option value="">— sem categoria —</option>
-    ${lista.map(c => `<option ${c === valor ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-    <option value="__nova">➕ Nova categoria…</option></select>`;
+  return `<input type="hidden" id="${px}categoria" value="${esc(lista(valor).join(', '))}">
+          <div class="chips" id="${px}categoria-chips"></div>`;
 }
-async function novaCategoria(sel) {
-  const c = (prompt('Nome da nova categoria:') || '').trim();
-  if (!c) { sel.value = ''; return; }
-  try { DB = await api('addCategoria', { categoria: c }); } catch (e) { toast('⚠️ ' + e.message); }
-  const opt = document.createElement('option'); opt.textContent = c;
-  sel.insertBefore(opt, sel.querySelector('[value="__nova"]')); sel.value = c;
+function renderCategorias(px) {
+  const inp = $('#' + px + 'categoria'); if (!inp) return;
+  const escolhidas = lista(inp.value);
+  const todas = unicos([...DB.categorias, ...escolhidas]);
+  $('#' + px + 'categoria-chips').innerHTML =
+    todas.map(c => `<button type="button" class="chip ${temItem(inp.value, c) ? 'sel' : ''}" onclick="alternarCategoria('${px}',${jsArg(c)})">${temItem(inp.value, c) ? '✓ ' : ''}${esc(c)}</button>`).join('')
+    + `<button type="button" class="chip novo" onclick="novaCategoria('${px}')">➕ Nova</button>`;
+}
+function alternarCategoria(px, c) {
+  const inp = $('#' + px + 'categoria');
+  const atual = lista(inp.value);
+  inp.value = (temItem(inp.value, c) ? atual.filter(x => norm(x) !== norm(c)) : [...atual, c]).join(', ');
+  renderCategorias(px);
+}
+async function novaCategoria(px) {
+  const c = (prompt('Nome da nova categoria:') || '').replace(/[,;]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!c) return;
+  const inp = $('#' + px + 'categoria');
+  const guardado = inp.value;
+  try { DB = await api('addCategoria', { categoria: c }); } catch (e) { return toast('⚠️ ' + e.message); }
+  inp.value = guardado; if (!temItem(inp.value, c)) inp.value = [...lista(inp.value), c].join(', ');
+  renderCategorias(px);
   preencherSelect('#fCat', 'Todas as categorias', DB.categorias);
 }
 
 /* nomes: escreve-se uma vez e depois é só tocar */
-function campoPessoa(id, rotulo, valor = '') {
-  return `<label>${rotulo}</label><input id="${id}" value="${esc(valor || '')}" autocomplete="off" oninput="mostrarChips('${id}')">
+// multi = true → aceita vários nomes ("Francisco, Guilherme"); tocar num nome junta-o ou tira-o
+function campoPessoa(id, rotulo, valor = '', multi = false) {
+  return `<label>${rotulo}</label><input id="${id}" value="${esc(valor || '')}" autocomplete="off" ${multi ? 'data-multi="1" placeholder="toca nos nomes ou escreve, separados por vírgula"' : ''} oninput="mostrarChips('${id}')">
           <div class="chips" id="${id}-chips"></div>`;
 }
 function mostrarChips(id, libsExtra) {
   const inp = $('#' + id); if (!inp) return;
   libsExtra = libsExtra || inp._libs || [];
+  inp._libs = libsExtra;
+  if (inp.dataset.multi) {
+    const segs = inp.value.split(',');
+    let ultimo = norm(segs[segs.length - 1].trim());
+    if (DB.pessoas.some(p => norm(p) === ultimo)) ultimo = '';   // nome completo → volta a mostrar todos
+    const escolhido = n => temItem(inp.value, n);
+    const mostrar = DB.pessoas.filter(p => escolhido(p) || !ultimo || norm(p).includes(ultimo)).slice(0, 14);
+    $('#' + id + '-chips').innerHTML = mostrar.map(p =>
+      `<button type="button" class="chip ${escolhido(p) ? 'sel' : ''}" onclick="alternarPessoa('${id}',${jsArg(p)})">${escolhido(p) ? '✓ ' : ''}${esc(p)}</button>`).join('');
+    return;
+  }
   const q = norm(inp.value);
   const passa = n => norm(n) !== q && (!q || norm(n).includes(q));
   const libs = libsExtra.filter(b => passa(b.nome)).map(b => `<button type="button" class="chip lib" onclick="escolherPessoa('${id}',this.dataset.n)" data-n="${esc(b.nome)}">🏠 ${esc(b.nome)}</button>`);
   const pessoas = DB.pessoas.filter(passa).slice(0, 10).map(p => `<button type="button" class="chip" onclick="escolherPessoa('${id}',this.textContent)">${esc(p)}</button>`);
   $('#' + id + '-chips').innerHTML = libs.concat(pessoas).join('');
-  inp._libs = libsExtra;
 }
 function escolherPessoa(id, nome) { const inp = $('#' + id); inp.value = nome; mostrarChips(id, inp._libs || []); }
+function alternarPessoa(id, nome) {
+  const inp = $('#' + id);
+  let nomes = lista(inp.value);
+  if (temItem(inp.value, nome)) nomes = nomes.filter(x => norm(x) !== norm(nome));
+  else {
+    // se o último pedaço escrito é o início deste nome, substitui-o
+    const ultimo = nomes.length ? norm(nomes[nomes.length - 1]) : '';
+    if (ultimo && !DB.pessoas.some(p => norm(p) === ultimo) && norm(nome).includes(ultimo)) nomes.pop();
+    nomes.push(nome);
+  }
+  inp.value = nomes.join(', ');
+  mostrarChips(id);
+}
 
 async function guardarForm(ev, px, modo) {
   ev.preventDefault();
@@ -613,7 +704,8 @@ async function guardarForm(ev, px, modo) {
     const p = { ...base, dono: g('donoRec'), comQuem: g('comQuem'), dataRecebido: g('dataRecebido') };
     ok = modo === 'editarRec' ? await gravar('editRecebido', { id, ...p }, 'Atualizado ✔') : await gravar('addRecebido', p, 'Registado como emprestado a nós ✔');
   } else {
-    const p = { ...base, ano: g('ano'), editora: g('editora'), categoria: g('categoria'), dono: g('dono') };
+    const p = { ...base, ano: g('ano'), editora: g('editora'), colecao: g('colecao'),
+                categoria: lista(g('categoria')).join(', '), dono: lista(g('dono')).join(', ') };
     if (modo === 'novo') guardar('rede_ultimoDono', p.dono || null);   // o próximo livro já vem com este dono
     ok = modo === 'editar' ? await gravar('editLivro', { id, ...p }, 'Atualizado ✔') : await gravar('addLivro', p, 'Livro guardado ✔');
   }
