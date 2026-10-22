@@ -78,6 +78,13 @@
   .filtro-ativo button{border:0;background:rgba(0,0,0,.08);color:inherit;border-radius:50%;width:24px;height:24px;line-height:1}
   .lnk{color:inherit;text-decoration:underline dotted;cursor:pointer}
   .info .colecao{color:var(--primaria);font-weight:600}
+  /* capa sem imagem que dá para tocar e tirar foto */
+  button.capa.sem{border:1.5px dashed var(--primaria);flex-direction:column;gap:2px;font-size:1.2rem;color:var(--primaria);padding:0}
+  button.capa.sem small{font-size:.6rem;font-weight:600}
+  .capa-form{display:flex;align-items:center;gap:12px;margin-top:8px}
+  .capa-btn{width:80px;height:112px;flex:none;border:1.5px dashed var(--primaria);border-radius:8px;background:#efe4d8;color:var(--primaria);font-size:1.5rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0;overflow:hidden}
+  .capa-btn small{font-size:.65rem;font-weight:600;line-height:1.2;padding:0 4px}
+  .capa-btn img{width:100%;height:100%;object-fit:cover}
   .caixa{border-radius:var(--raio);padding:12px 14px;margin:12px 0}
   .caixa.ok{background:var(--ok-bg);color:var(--ok)}
   .caixa.info{background:var(--info-bg);color:#6b4600}
@@ -156,6 +163,7 @@
         <a href="#" id="lnkManual" onclick="novoSemIsbn();return false">➕ Registar à mão</a>
       </div>
       <input type="file" id="fotoIsbn" accept="image/*" capture="environment" class="hidden" onchange="lerFoto(this)">
+      <input type="file" id="fotoCapa" accept="image/*" class="hidden" onchange="receberFotoCapa(this)">
       <div id="painel" class="hidden">
         <div class="painel-topo"><b id="painelTitulo"></b><button onclick="fecharPainel()" aria-label="Fechar">✕</button></div>
         <div id="resultadoLeitura"></div>
@@ -377,9 +385,46 @@ function preencherSelect(sel, primeiro, valores) {
 }
 
 /* ---------- cartões ---------- */
-function capa(o) {
-  return o.capa ? `<img class="capa" src="${esc(o.capa)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=capa>📕</div>'">`
-                : `<div class="capa">${esc(((o.titulo || '?').trim()[0] || '?').toUpperCase())}</div>`;
+// livroId: se vier preenchido e não houver capa, a capa vira um botão para tirar foto
+function capa(o, livroId) {
+  if (o.capa) return `<img class="capa" src="${esc(o.capa)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=capa>📕</div>'">`;
+  if (livroId) return `<button class="capa sem" onclick="fotoParaLivro('${esc(livroId)}')" title="Tirar foto à capa">📷<small>capa</small></button>`;
+  return `<div class="capa">${esc(((o.titulo || '?').trim()[0] || '?').toUpperCase())}</div>`;
+}
+
+/* ---------- fotos de capa ---------- */
+let ALVO_CAPA = null;   // { px } (formulário aberto) ou { livroId } (cartão do livro)
+function escolherFotoCapa(px) { ALVO_CAPA = { px }; $('#fotoCapa').click(); }
+function fotoParaLivro(id) { ALVO_CAPA = { livroId: id }; $('#fotoCapa').click(); }
+
+/** Reduz a foto (máx. 600 px) para ficar leve e rápida a carregar. */
+async function reduzirImagem(file, max = 600) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = erro; i.src = url; });
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.82);
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function receberFotoCapa(input) {
+  const f = input.files && input.files[0]; input.value = '';
+  const alvo = ALVO_CAPA; ALVO_CAPA = null;
+  if (!f || !alvo) return;
+  let imagem;
+  try { imagem = await reduzirImagem(f); } catch (e) { return toast('Não consegui abrir essa imagem.'); }
+  const livro = alvo.livroId ? DB.livros.find(l => l.id === alvo.livroId) : null;
+  const isbn = livro ? livro.isbn : (($('#' + alvo.px + 'isbn') || {}).value || '');
+  let r;
+  try { r = await api('guardarCapa', { imagem, isbn }); } catch (e) { return toast('⚠️ ' + e.message, 4000); }
+  if (livro) return gravar('editLivro', { id: livro.id, titulo: livro.titulo, capa: r.capa }, 'Capa guardada ✔');
+  const inp = $('#' + alvo.px + 'capa'); if (!inp) return;
+  inp.value = r.capa;
+  $('#' + alvo.px + 'capa-btn').innerHTML = `<img src="${esc(r.capa)}" alt="">`;
+  $('#' + alvo.px + 'capa-dica').textContent = 'Foto pronta — carrega em Guardar.';
 }
 function cardLivro(l) {
   const e = empAtivo(l.id), meu = podeEditar(l.biblioteca);
@@ -393,7 +438,7 @@ function cardLivro(l) {
   const acoes = meu ? `<div class="acoes">
       ${e ? `<button onclick="devolver('${e.id}')">Já foi devolvido</button>` : `<button onclick="abrirEmprestar('${l.id}')">Emprestar</button>`}
       <button class="sec" onclick="editarLivro('${l.id}')">Editar</button></div>` : '';
-  return `<article class="card ${l.biblioteca !== ESCOPO && ESCOPO !== '*' ? 'rede' : ''}">${capa(l)}<div class="info">
+  return `<article class="card ${l.biblioteca !== ESCOPO && ESCOPO !== '*' ? 'rede' : ''}">${capa(l, meu ? l.id : null)}<div class="info">
     <h3>${esc(l.titulo)}</h3>${autores ? `<p>${autores}</p>` : ''}${colecao}${meta ? `<p>${meta}</p>` : ''}
     ${l.isbn ? `<p>ISBN ${esc(l.isbn)}</p>` : ''}${libBadge}${estado}${acoes}</div></article>`;
 }
@@ -569,7 +614,16 @@ function novoRecebido() {
 function campoBiblioteca(px, valor) {
   const libs = minhasLibs();
   const sel = valor && podeEditar(valor) ? valor : (podeEditar(ESCOPO) ? ESCOPO : (libs[0] || {}).id);
-  return `<label>Biblioteca</label><select id="${px}biblioteca">${libs.map(b => `<option value="${esc(b.id)}" ${b.id === sel ? 'selected' : ''}>${esc(b.nome)}</option>`).join('')}</select>`;
+  return `<label><span class="${px}so-nosso">Biblioteca</span><span class="${px}so-recebido">Biblioteca que <b>recebeu</b> o livro (onde ele está agora)</span></label>
+    <select id="${px}biblioteca">${libs.map(b => `<option value="${esc(b.id)}" ${b.id === sel ? 'selected' : ''}>${esc(b.nome)}</option>`).join('')}</select>`;
+}
+/* capa: mostra a capa encontrada, ou um botão para tirar foto */
+function campoCapa(px, url) {
+  return `<input type="hidden" id="${px}capa" value="${esc(url || '')}">
+    <div class="capa-form">
+      <button type="button" class="capa-btn" id="${px}capa-btn" onclick="escolherFotoCapa('${px}')">${url ? `<img src="${esc(url)}" alt="">` : '📷<small>Tirar foto à capa</small>'}</button>
+      <span class="dica" id="${px}capa-dica">${url ? 'Toca na capa para a trocar por uma foto tua.' : ''}</span>
+    </div>`;
 }
 // modo: 'novo' | 'editar' | 'editarRec'
 function formLivro(d, modo, px, tipoInicial = 'nosso') {
@@ -580,8 +634,7 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
       <label><input type="radio" name="${px}tipo" value="nosso" ${tipo === 'nosso' ? 'checked' : ''} onchange="mudarTipo('${px}')">📗 É nosso</label>
       <label><input type="radio" name="${px}tipo" value="recebido" ${tipo === 'recebido' ? 'checked' : ''} onchange="mudarTipo('${px}')">📥 Emprestaram-nos</label>
     </div>` : `<input type="hidden" name="${px}tipo" value="${tipo}">`}
-    ${d.capa ? `<img src="${v('capa')}" alt="" style="height:110px;border-radius:6px;margin-top:8px">` : ''}
-    <input type="hidden" id="${px}capa" value="${v('capa')}">
+    ${campoCapa(px, d.capa)}
     ${campoBiblioteca(px, d.biblioteca)}
     <label>Título *</label><input id="${px}titulo" value="${v('titulo')}" required>
     <label>Autor</label><input id="${px}autor" value="${v('autor')}">
@@ -600,7 +653,7 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
     </div>
     <div class="${px}so-recebido">
       ${campoPessoa(px + 'donoRec', 'Quem nos emprestou *', modo === 'editarRec' ? d.dono : '')}
-      <div class="dica">Se for alguém da rede, empresta-se a partir da biblioteca dessa pessoa e aparece aqui sozinho.</div>
+      ${modo === 'novo' ? `<div class="dica">Se veio de uma biblioteca da rede, toca no 🏠 dela: o livro fica registado nas duas — na de origem como “emprestado” e aqui em “Emprestaram-nos”.</div>` : ''}
       ${campoPessoa(px + 'comQuem', 'Está com (quem o está a ler)', d.comQuem)}
       <label>Data em que o recebemos</label><input type="date" id="${px}dataRecebido" value="${d.dataRecebido || hojeISO()}">
     </div>
@@ -613,7 +666,13 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
     </div>
   </form>`;
 }
-function ligarForm(px) { if (!$('#' + px + 'titulo')) return; mudarTipo(px); renderCategorias(px); ['dono', 'donoRec', 'comQuem'].forEach(k => mostrarChips(px + k)); }
+function ligarForm(px) {
+  if (!$('#' + px + 'titulo')) return;
+  mudarTipo(px); renderCategorias(px);
+  ['dono', 'comQuem'].forEach(k => mostrarChips(px + k));
+  // num registo novo, "Quem nos emprestou" mostra também as bibliotecas da rede (🏠)
+  mostrarChips(px + 'donoRec', $('#' + px + 'tipos') ? DB.bibliotecas : []);
+}
 function tipoDe(px) { const el = document.querySelector(`[name="${px}tipo"]:checked`) || document.querySelector(`[name="${px}tipo"]`); return el ? el.value : 'nosso'; }
 function mudarTipo(px) {
   const t = tipoDe(px);
@@ -701,6 +760,17 @@ async function guardarForm(ev, px, modo) {
   let ok;
   if (tipoDe(px) === 'recebido') {
     if (!g('donoRec')) return toast('Indica quem vos emprestou o livro');
+    // veio de uma biblioteca da rede? regista nas duas bibliotecas
+    const origem = modo === 'novo' && DB.bibliotecas.find(b => norm(b.nome) === norm(g('donoRec')));
+    if (origem) {
+      if (origem.id === base.biblioteca) return toast('Em “Biblioteca” escolhe a biblioteca que RECEBEU o livro, não a de origem.', 5000);
+      ok = await gravar('receberDaRede', {
+        ...base, deBiblioteca: origem.id, paraBiblioteca: base.biblioteca, dataRecebido: g('dataRecebido'),
+        editora: g('editora'), ano: g('ano'), colecao: g('colecao'), categoria: lista(g('categoria')).join(', ')
+      }, `Registado nas duas bibliotecas: emprestado por ${origem.nome} ✔`);
+      if (ok) { fecharPainel(); $('#q').value = ''; pesquisar(); }
+      return;
+    }
     const p = { ...base, dono: g('donoRec'), comQuem: g('comQuem'), dataRecebido: g('dataRecebido') };
     ok = modo === 'editarRec' ? await gravar('editRecebido', { id, ...p }, 'Atualizado ✔') : await gravar('addRecebido', p, 'Registado como emprestado a nós ✔');
   } else {
