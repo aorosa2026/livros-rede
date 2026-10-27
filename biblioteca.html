@@ -64,6 +64,10 @@
   .badge.atraso{background:var(--alerta-bg);color:var(--alerta)}
   .badge.lib{background:var(--rede-bg);color:var(--rede)}
   .badge.res{background:#efe7fb;color:#5b3a9e}
+  .sel-cat{width:100%;text-align:left;font:inherit;padding:10px 12px;border:1px solid var(--linha);border-radius:10px;background:#fff;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sel-cat.on{border-color:var(--primaria);color:var(--primaria);font-weight:600}
+  .painel-cat{border:1px solid var(--linha);border-radius:var(--raio);background:#fff;padding:10px 12px;margin-top:8px}
+  .chip.excl{background:var(--alerta-bg);border-color:var(--alerta);color:var(--alerta);text-decoration:line-through}
   .info p.nota{background:#fbf6e9;border-left:3px solid #e2c98f;color:#5c4a2a;padding:4px 8px;border-radius:4px;margin:6px 0 2px;font-size:.82rem}
   .titulo-sec{margin:18px 0 4px;font-size:1rem}
   .titulo-sec small{color:var(--suave);font-weight:400}
@@ -178,9 +182,14 @@
         <span id="filtroAutor"></span>
       </div>
       <div class="filtros">
-        <select id="fCat" onchange="pesquisar()"><option value="">Todas as categorias</option></select>
+        <button type="button" id="btnCat" class="sel-cat" onclick="$('#painelCat').classList.toggle('hidden')">🏷️ Categorias ▾</button>
         <select id="fDono" onchange="pesquisar()"><option value="">Todos os donos</option></select>
         <select id="fCol" onchange="pesquisar()" style="grid-column:1/-1"><option value="">Todas as coleções</option></select>
+      </div>
+      <div id="painelCat" class="painel-cat hidden">
+        <div class="dica">Toca uma vez para <b>incluir</b> (o livro tem de ter todas as escolhidas), duas vezes para <b>excluir</b>, três para desligar.</div>
+        <div class="chips" id="fCatChips"></div>
+        <div class="botoes" style="margin-top:8px"><button type="button" class="btn sec" onclick="limparCategorias()">Limpar</button><button type="button" class="btn" onclick="$('#painelCat').classList.add('hidden')">OK</button></div>
       </div>
       <label class="check"><input type="checkbox" id="fRec" checked onchange="pesquisar()"> Incluir livros que nos emprestaram</label>
       <div id="resumo" class="contagem"></div>
@@ -238,6 +247,7 @@ const CATEGORIAS_INFANTIS = ['Infantil'];
 /* ======================================================= */
 
 let TOKEN = '', DB = null, ESCOPO = '*', scanner = null, FILTRO_AUTOR = '';
+const FILTRO_CAT = { incl: [], excl: [] };   // categorias que o livro TEM de ter / NÃO pode ter
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -390,7 +400,7 @@ function renderTudo() {
   $('#bolRec').classList.toggle('hidden', !atrEscopo); $('#bolRec').textContent = atrEscopo;
 
   $('#btnNovoRec').classList.toggle('hidden', !minhasLibs().length);
-  preencherSelect('#fCat', 'Todas as categorias', DB.categorias);
+  renderFiltroCat();
   const visiveis = DB.livros.filter(l => noEscopo(l.biblioteca));
   preencherSelect('#fDono', 'Todos os donos', unicos(visiveis.flatMap(l => lista(l.dono))));
   const colecoes = unicos(DB.livros.map(l => l.colecao || '').filter(Boolean));
@@ -504,13 +514,37 @@ function filtrarAutor(a) { FILTRO_AUTOR = a; mudarTab('pesquisa'); fecharDlg(); 
 function filtrarColecao(c) { $('#fCol').value = c; mudarTab('pesquisa'); fecharDlg(); fecharPainel(); pesquisar(); }
 function limparAutor() { FILTRO_AUTOR = ''; pesquisar(); }
 
+/* ---------- filtro de categorias: incluir (E) / excluir ---------- */
+function alternarFiltroCat(c) {
+  const em = (arr) => arr.some(x => norm(x) === norm(c));
+  const tira = (arr) => arr.filter(x => norm(x) !== norm(c));
+  if (em(FILTRO_CAT.incl)) { FILTRO_CAT.incl = tira(FILTRO_CAT.incl); FILTRO_CAT.excl.push(c); }   // incluída → excluída
+  else if (em(FILTRO_CAT.excl)) FILTRO_CAT.excl = tira(FILTRO_CAT.excl);                         // excluída → desligada
+  else FILTRO_CAT.incl.push(c);                                                                    // desligada → incluída
+  renderFiltroCat(); pesquisar();
+}
+function limparCategorias() { FILTRO_CAT.incl = []; FILTRO_CAT.excl = []; renderFiltroCat(); pesquisar(); }
+function renderFiltroCat() {
+  const todas = unicos([...DB.categorias, ...FILTRO_CAT.incl, ...FILTRO_CAT.excl]);
+  const estado = c => FILTRO_CAT.incl.some(x => norm(x) === norm(c)) ? 'sel' : FILTRO_CAT.excl.some(x => norm(x) === norm(c)) ? 'excl' : '';
+  $('#fCatChips').innerHTML = todas.map(c => {
+    const e = estado(c);
+    return `<button type="button" class="chip ${e}" onclick="alternarFiltroCat(${jsArg(c)})">${e === 'sel' ? '✓ ' : e === 'excl' ? '✕ ' : ''}${esc(c)}</button>`;
+  }).join('');
+  const resumo = [FILTRO_CAT.incl.join(' + '), FILTRO_CAT.excl.length ? 'sem ' + FILTRO_CAT.excl.join(', ') : ''].filter(Boolean).join(' · ');
+  $('#btnCat').textContent = resumo ? '🏷️ ' + resumo : '🏷️ Categorias ▾';
+  $('#btnCat').classList.toggle('on', !!resumo);
+}
+
 function pesquisar() {
   const bruto = $('#q').value.trim(), q = norm(bruto), dig = bruto.replace(/[^0-9xX]/g, '').toUpperCase();
-  const cat = $('#fCat').value, dono = $('#fDono').value, col = $('#fCol').value;
+  const dono = $('#fDono').value, col = $('#fCol').value;
+  const cat = FILTRO_CAT.incl.length || FILTRO_CAT.excl.length;   // há filtro de categorias?
   const inf = ler('rede_inf') === '1';
   // texto: título, autor, coleção ou ISBN
   const bate = o => !q || norm(o.titulo + ' ' + o.autor + ' ' + (o.colecao || '')).includes(q) || (dig.length >= 3 && String(o.isbn).includes(dig));
-  const filtra = l => (!cat || temItem(l.categoria, cat)) && (!dono || temItem(l.dono, dono))
+  const filtra = l => FILTRO_CAT.incl.every(c => temItem(l.categoria, c)) && !FILTRO_CAT.excl.some(c => temItem(l.categoria, c))
+    && (!dono || temItem(l.dono, dono))
     && (!col || norm(l.colecao) === norm(col)) && (!FILTRO_AUTOR || temItem(l.autor, FILTRO_AUTOR))
     && (!inf || CATEGORIAS_INFANTIS.some(c => temItem(l.categoria, c))) && bate(l);
   const filtrosDeLivro = cat || dono || col || FILTRO_AUTOR || inf;   // livros recebidos não têm estes dados
@@ -739,7 +773,7 @@ async function novaCategoria(px) {
   try { DB = await api('addCategoria', { categoria: c }); } catch (e) { return toast('⚠️ ' + e.message); }
   inp.value = guardado; if (!temItem(inp.value, c)) inp.value = [...lista(inp.value), c].join(', ');
   renderCategorias(px);
-  preencherSelect('#fCat', 'Todas as categorias', DB.categorias);
+  renderFiltroCat();
 }
 
 /* nomes: escreve-se uma vez e depois é só tocar */
