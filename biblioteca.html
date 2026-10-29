@@ -64,6 +64,9 @@
   .badge.atraso{background:var(--alerta-bg);color:var(--alerta)}
   .badge.lib{background:var(--rede-bg);color:var(--rede)}
   .badge.res{background:#efe7fb;color:#5b3a9e}
+  .isbn-lido{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:4px 0 8px;font-size:.95rem}
+  .isbn-lido b{font-size:1.1rem;letter-spacing:.04em}
+  .isbn-lido .btn{padding:6px 10px;font-size:.85rem;margin-left:auto}
   .sel-cat{width:100%;text-align:left;font:inherit;padding:10px 12px;border:1px solid var(--linha);border-radius:10px;background:#fff;color:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .sel-cat.on{border-color:var(--primaria);color:var(--primaria);font-weight:600}
   .painel-cat{border:1px solid var(--linha);border-radius:var(--raio);background:#fff;padding:10px 12px;margin-top:8px}
@@ -244,6 +247,11 @@ const CORES_EXTRA = ['#a0522d', '#00796b', '#c2185b', '#5d4037', '#455a64']; // 
 /* ============ BOTÃO RÁPIDO "SÓ INFANTIS" ============
    Categoria(s) que o botão 🧸 filtra. Tem de ser o nome exato da folha Categorias. */
 const CATEGORIAS_INFANTIS = ['Infantil'];
+
+/* ============ LEITURA DO CÓDIGO DE BARRAS ============
+   Quantas leituras IGUAIS seguidas são precisas para aceitar um ISBN.
+   2 = mais fiável (demora ~0,2 s a mais). 1 = mais rápido, mas aceita leituras erradas. */
+const LEITURAS_PRECISAS = 2;
 /* ======================================================= */
 
 let TOKEN = '', DB = null, ESCOPO = '*', scanner = null, FILTRO_AUTOR = '';
@@ -290,12 +298,13 @@ function mostrarLogin(msg) {
   $('#msgLogin').classList.toggle('hidden', !msg); $('#msgLogin').innerHTML = msg || '';
   if (!msg && window.google) google.accounts.id.prompt();
 }
-function sair() { if (window.google) google.accounts.id.disableAutoSelect(); pararCamara(); mostrarLogin(); }
+function sair() { if (window.google) google.accounts.id.disableAutoSelect(); pararCamara(); apagarCache(); APP_ABERTA = false; mostrarLogin(); }
 
 /* ================= API ================= */
-async function api(action, payload = {}) {
+// opcoes.silencioso = true → não tapa o ecrã enquanto espera (para pedidos em segundo plano)
+async function api(action, payload = {}, opcoes = {}) {
   if (!tokenValido(TOKEN)) { mostrarLogin('A sessão terminou. Entra outra vez.'); throw new Error('Sessão terminada'); }
-  $('#loading').classList.add('on');
+  if (!opcoes.silencioso) $('#loading').classList.add('on');
   try {
     const r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ token: TOKEN, action, payload }) });
     const j = await r.json();
@@ -304,30 +313,48 @@ async function api(action, payload = {}) {
     if (j.erro.startsWith('NAO_AUTORIZADO:')) {
       const em = j.erro.split(':')[1];
       if (window.google) google.accounts.id.disableAutoSelect();
+      apagarCache();
       mostrarLogin(`A conta <b>${esc(em)}</b> ainda não tem acesso.<br>Pede ao administrador para a juntar a uma biblioteca, ou entra com outra conta.`);
       throw new Error('Sem acesso');
     }
     throw new Error(j.erro);
-  } finally { $('#loading').classList.remove('on'); }
+  } finally { if (!opcoes.silencioso) $('#loading').classList.remove('on'); }
 }
 async function gravar(action, payload, msg) {
-  try { DB = await api(action, payload); renderTudo(); if (msg) toast(msg); return true; }
+  try { DB = await api(action, payload); guardarCache(); renderTudo(); if (msg) toast(msg); return true; }
   catch (e) { toast('⚠️ ' + e.message, 4000); return false; }
 }
 function toast(t, ms = 2400) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), ms); }
 
+/* Cópia dos dados neste telemóvel/computador: a app abre logo com ela e atualiza em segundo plano.
+   É apagada ao carregar em "Sair". */
+const chaveCache = () => 'rede_db_' + (payloadJWT(TOKEN).email || '');
+function guardarCache() { try { localStorage.setItem(chaveCache(), JSON.stringify(DB)); } catch (e) {} }
+function apagarCache() { try { Object.keys(localStorage).filter(k => k.startsWith('rede_db_')).forEach(k => localStorage.removeItem(k)); } catch (e) {} }
+
+let APP_ABERTA = false;
+function mostrarApp() {
+  $('#ecraLogin').classList.add('hidden'); $('#app').classList.remove('hidden');
+  $('#meuEmail').textContent = DB.eu.email + (DB.eu.admin ? ' · admin' : (DB.eu.libs.length ? '' : ' · só consulta'));
+  const guardado = APP_ABERTA ? ESCOPO : ler('rede_escopo');
+  ESCOPO = DB.bibliotecas.some(b => b.id === guardado) || guardado === '*' ? guardado : (DB.eu.libs[0] || '*');
+  APP_ABERTA = true;
+  renderTudo();
+}
 async function arrancar() {
-  try { DB = await api('tudo'); }
+  let jaMostrou = false;
+  try {
+    const c = JSON.parse(localStorage.getItem(chaveCache()) || 'null');
+    if (c && c.eu && c.livros) { DB = c; mostrarApp(); jaMostrou = true; }   // abre logo com os últimos dados
+  } catch (e) {}
+  try { DB = await api('tudo', {}, { silencioso: jaMostrou }); guardarCache(); }
   catch (e) {
+    if (jaMostrou) return toast('Sem ligação ao servidor — estás a ver os últimos dados guardados.', 4500);
     const m = $('#msgLogin');
     if (!m.innerHTML || m.classList.contains('hidden')) { m.classList.remove('hidden'); m.textContent = 'Não consegui ligar ao servidor: ' + e.message; }
     return;
   }
-  $('#ecraLogin').classList.add('hidden'); $('#app').classList.remove('hidden');
-  $('#meuEmail').textContent = DB.eu.email + (DB.eu.admin ? ' · admin' : (DB.eu.libs.length ? '' : ' · só consulta'));
-  const guardado = ler('rede_escopo');
-  ESCOPO = DB.bibliotecas.some(b => b.id === guardado) || guardado === '*' ? guardado : (DB.eu.libs[0] || '*');
-  renderTudo();
+  mostrarApp();
 }
 
 /* ================= AJUDAS ================= */
@@ -575,7 +602,38 @@ const novoLeitor = () => new Html5Qrcode('leitor', {
   formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13],
   experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false
 });
-const ehIsbn = t => /^97[89]\d{10}$/.test(t);
+/** Limpa hífenes/espaços e converte ISBN-10 em ISBN-13 (igual ao servidor). */
+function normIsbn(s) {
+  s = String(s || '').toUpperCase().replace(/[^0-9X]/g, '');
+  if (s.length === 10) {
+    const b = '978' + s.slice(0, 9);
+    let soma = 0; for (let i = 0; i < 12; i++) soma += (+b[i]) * (i % 2 ? 3 : 1);
+    return b + ((10 - soma % 10) % 10);
+  }
+  return s;
+}
+/** ISBN-13 de livro (978/979) com o dígito de controlo certo — uma leitura errada quase nunca passa. */
+function isbnValido(s) {
+  if (!/^97[89]\d{10}$/.test(s)) return false;
+  let soma = 0; for (let i = 0; i < 12; i++) soma += (+s[i]) * (i % 2 ? 3 : 1);
+  return (10 - soma % 10) % 10 === +s[12];
+}
+let LEITURA = { codigo: '', vezes: 0, t: 0 };
+/** Chamado a cada fotograma lido: só aceita depois de LEITURAS_PRECISAS leituras iguais e válidas. */
+function leuCodigo(txt) {
+  if (!scanner) return;
+  const isbn = normIsbn(txt);
+  if (!isbnValido(isbn)) return;                       // leitura com erro ou outro código: continua a tentar
+  const agora = Date.now();
+  if (LEITURA.codigo === isbn && agora - LEITURA.t < 2000) LEITURA.vezes++;
+  else LEITURA = { codigo: isbn, vezes: 1, t: agora };
+  LEITURA.t = agora;
+  if (LEITURA.vezes < LEITURAS_PRECISAS) return;
+  LEITURA = { codigo: '', vezes: 0, t: 0 };
+  if (navigator.vibrate) navigator.vibrate(120);
+  pararCamara(); procurarIsbn(isbn);
+}
+function lerDeNovo() { fecharPainel(); alternarCamara(); }
 
 async function alternarCamara() {
   if (scanner) return pararCamara();
@@ -591,7 +649,7 @@ async function alternarCamara() {
       fps: 10,
       qrbox: (w, h) => ({ width: Math.max(150, Math.min(320, w * 0.9)), height: Math.max(80, Math.min(150, h * 0.45)) })
     }, txt => {
-      if (ehIsbn(txt)) { if (navigator.vibrate) navigator.vibrate(120); pararCamara(); procurarIsbn(txt); }
+      leuCodigo(txt);
     });
     $('#btnCam').textContent = '✕'; $('#btnCam').classList.add('on');
   } catch (e) {
@@ -618,7 +676,7 @@ async function lerFoto(input) {
   $('#loading').classList.add('on');
   try {
     const txt = await novoLeitor().scanFile(f, false);
-    if (!ehIsbn(txt)) throw new Error();
+    if (!isbnValido(normIsbn(txt))) throw new Error();
     procurarIsbn(txt);
   } catch (e) { toast('Não consegui ler o código na foto. Tenta mais perto e com boa luz.', 4500); }
   finally { $('#loading').classList.remove('on'); }
@@ -640,28 +698,59 @@ function fecharPainel() {
   $('#painel').classList.add('hidden'); $('#resultadoLeitura').innerHTML = '';
 }
 
-async function procurarIsbn(isbn) {
-  isbn = String(isbn || '').trim();
+/* Ler um ISBN: a resposta "já temos / existe na rede" é imediata (usa os dados já carregados);
+   o título, autor e capa vêm da internet em segundo plano e preenchem o formulário quando chegam. */
+let ISBN_ATUAL = '';
+async function procurarIsbn(bruto) {
+  const isbn = normIsbn(bruto);
   if (!isbn) return toast('Escreve um ISBN');
   mudarTab('pesquisa');
-  let r;
-  try { r = await api('lookup', { isbn }); } catch (e) { return toast('⚠️ ' + e.message, 4000); }
+  ISBN_ATUAL = isbn;
+  const existentes = DB.livros.filter(l => l.isbn === isbn);
+  const recebidos = DB.recebidos.filter(r => r.isbn === isbn && !r.dataDevolvido);
+  const aqui = ESCOPO === '*' ? [] : existentes.filter(l => l.biblioteca === ESCOPO);
+  const naRede = existentes.filter(l => !aqui.includes(l));
 
-  const aqui = ESCOPO === '*' ? [] : r.existentes.filter(l => l.biblioteca === ESCOPO);
-  const naRede = r.existentes.filter(l => !aqui.includes(l));
-  let html = '';
+  let html = `<div class="isbn-lido">Lido: <b>${esc(isbn)}</b> <span class="dica">— confirma com o número do livro</span>
+    <button type="button" class="btn sec" onclick="lerDeNovo()">📷 Ler de novo</button></div>`;
+  if (!isbnValido(isbn)) html += `<div class="caixa info"><h3>⚠️ Este ISBN parece errado</h3>O último algarismo (de controlo) não bate certo — foi mal lido ou mal escrito. Confirma o número no livro.</div>`;
   if (aqui.length) html += `<div class="caixa ok"><h3>✅ Já está nesta biblioteca${aqui.length > 1 ? ` (${aqui.length} exemplares)` : ''}</h3></div>` + aqui.map(cardLivro).join('');
   if (naRede.length) html += `<div class="caixa rede"><h3>🌐 Existe na rede: ${[...new Set(naRede.map(l => nomeLib(l.biblioteca)))].map(esc).join(', ')}</h3></div>` + naRede.map(cardLivro).join('');
-  if (r.recebidos.length) html += `<div class="caixa info"><h3>📥 Este livro está emprestado a alguém da rede</h3></div>` + r.recebidos.map(x => cardRecebido({ ...x, tipo: 'manual' })).join('');
+  if (recebidos.length) html += `<div class="caixa info"><h3>📥 Este livro está emprestado a alguém da rede</h3></div>` + recebidos.map(x => cardRecebido({ ...x, tipo: 'manual' })).join('');
 
-  if (minhasLibs().length) {
-    const jaHa = r.existentes.length || r.recebidos.length;
-    if (!r.meta && !jaHa) html += `<div class="caixa info">Não encontrei este ISBN online — preenche os dados à mão.</div>`;
-    if (jaHa) html += `<button class="btn sec" onclick="this.remove();$('#formNovo').classList.remove('hidden')">Registar mesmo assim</button>`;
-    html += `<div id="formNovo" class="${jaHa ? 'hidden' : ''}">${formLivro({ isbn: r.isbn, ...(r.meta || {}) }, 'novo', 'n-')}</div>`;
-  } else if (!r.existentes.length) html += `<div class="caixa info">Ninguém na rede tem este livro.</div>`;
-  abrirPainel('ISBN ' + r.isbn, html);
+  const podeRegistar = minhasLibs().length > 0;
+  const jaHa = existentes.length || recebidos.length;
+  if (podeRegistar) {
+    if (jaHa) html += `<button class="btn sec" onclick="this.remove();$('#formNovo').classList.remove('hidden');carregarDadosLivro('${esc(isbn)}')">Registar mesmo assim</button>`;
+    html += `<div id="formNovo" class="${jaHa ? 'hidden' : ''}">
+      <div id="metaEstado" class="caixa info">🔎 A procurar título, autor e capa… (podes ir preenchendo)</div>
+      ${formLivro({ isbn }, 'novo', 'n-')}</div>`;
+  } else if (!existentes.length) html += `<div class="caixa info">Ninguém na rede tem este livro.</div>`;
+  abrirPainel('ISBN ' + isbn, html);
   ligarForm('n-');
+  if (podeRegistar && !jaHa) carregarDadosLivro(isbn);
+}
+
+/** Vai buscar os dados do livro à internet e preenche só os campos ainda vazios. */
+async function carregarDadosLivro(isbn) {
+  let meta = null;
+  try { meta = (await api('meta', { isbn }, { silencioso: true })).meta; }
+  catch (e) { if (ISBN_ATUAL === isbn && $('#metaEstado')) $('#metaEstado').textContent = '⚠️ Não consegui procurar os dados (' + e.message + '). Preenche à mão.'; return; }
+  if (ISBN_ATUAL !== isbn || !$('#n-titulo')) return;     // entretanto leu outro livro ou fechou o painel
+  const estado = $('#metaEstado');
+  if (!meta) { if (estado) estado.textContent = 'Não encontrei este ISBN online — preenche os dados à mão.'; return; }
+  if (estado) estado.remove();
+  ['titulo', 'autor', 'editora', 'ano', 'colecao'].forEach(k => { const el = $('#n-' + k); if (el && !el.value.trim() && meta[k]) el.value = meta[k]; });
+  if (meta.capa && !$('#n-capa').value) {
+    $('#n-capa').value = meta.capa;
+    $('#n-capa-btn').innerHTML = `<img src="${esc(meta.capa)}" alt="">`;
+    $('#n-capa-dica').textContent = 'Toca na capa para a trocar por uma foto tua.';
+  }
+  const cat = $('#n-categoria');
+  if (cat && !cat.value && DB.categorias.includes(meta.categoriaSugerida)) {
+    cat.value = meta.categoriaSugerida; renderCategorias('n-');
+    $('#n-categoria-chips').insertAdjacentHTML('afterend', '<div class="dica">Categoria sugerida pela Biblioteca Nacional — confirma.</div>');
+  }
 }
 function novoSemIsbn() {
   pararCamara();
