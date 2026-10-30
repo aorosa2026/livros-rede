@@ -202,7 +202,7 @@
     <section id="tab-reservas">
       <h3 class="titulo-sec">📥 Pedidos que nos fizeram <small>— entrega o livro e carrega em “Entregue”</small></h3>
       <div id="listaPedAnos"></div>
-      <h3 class="titulo-sec">📤 Os nossos pedidos <small>— à espera que nos entreguem</small></h3>
+      <h3 class="titulo-sec">📤 Os nossos pedidos <small>— quando o livro chegar, carrega em “Já recebemos”</small></h3>
       <div id="listaPedNossos"></div>
       <details><summary>Histórico de pedidos</summary><div id="histPed"></div></details>
     </section>
@@ -1016,6 +1016,11 @@ async function confirmarPedido(livroId) {
 async function cancelarPedido(id) {
   if (confirm('Cancelar este pedido? O livro deixa de estar reservado.')) gravar('cancelarPedido', { id }, 'Pedido cancelado');
 }
+async function receberPedido(id) {
+  const p = DB.pedidos.find(x => x.id === id);
+  if (confirm(`Confirmas que já receberam “${p.titulo}” de ${nomeLib(p.biblioteca)}?\nPassa para os Emprestaram-nos.`))
+    gravar('entregarPedido', { id, data: hojeISO() }, 'Recebido — está agora em Emprestaram-nos ✔');
+}
 async function entregarPedido(id) {
   const p = DB.pedidos.find(x => x.id === id);
   if (confirm(`Confirmas que entregaste “${p.titulo}” a ${nomeLib(p.paraBiblioteca)}?\nPassa para os Emprestados.`))
@@ -1039,7 +1044,12 @@ function cardPedido(p, lado) {
       ? `<p class="dica">Ainda está emprestado a ${esc(emp.pessoa)} — quando voltar, podes entregá-lo.</p>`
       : `<div class="acoes"><button onclick="entregarPedido('${p.id}')">📦 Entregue</button><button class="sec" onclick="recusarPedido('${p.id}')">Recusar</button></div>`;
   }
-  if (lado === 'nosso' && podeEditar(p.paraBiblioteca)) acoes = `<div class="acoes"><button class="sec" onclick="cancelarPedido('${p.id}')">Cancelar pedido</button></div>`;
+  if (lado === 'nosso' && podeEditar(p.paraBiblioteca)) {
+    const emp = empAtivo(p.livroId);
+    acoes = emp
+      ? `<p class="dica">Ainda está emprestado a ${esc(emp.pessoa)} — esperem que seja devolvido.</p><div class="acoes"><button class="sec" onclick="cancelarPedido('${p.id}')">Cancelar pedido</button></div>`
+      : `<div class="acoes"><button onclick="receberPedido('${p.id}')">📦 Já recebemos</button><button class="sec" onclick="cancelarPedido('${p.id}')">Cancelar pedido</button></div>`;
+  }
   return `<article class="card">${capa(l)}<div class="info"><h3>${esc(p.titulo)}</h3>
     <p>${quem}</p><p>a ${fmt(p.dataPedido)}</p>${notaHtml(p.notas, '💬')}
     <span class="badge res">🔖 ${d === 0 ? 'Hoje' : `Há ${d} dia${d === 1 ? '' : 's'}`}</span>${acoes}</div></article>`;
