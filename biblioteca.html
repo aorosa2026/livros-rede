@@ -64,6 +64,13 @@
   .badge.atraso{background:var(--alerta-bg);color:var(--alerta)}
   .badge.lib{background:var(--rede-bg);color:var(--rede)}
   .badge.res{background:#efe7fb;color:#5b3a9e}
+  .badge.oculto{background:#eceff1;color:#455a64}
+  .card{position:relative}
+  .fav{position:absolute;top:8px;right:8px;border:0;background:none;font-size:1.35rem;line-height:1;padding:4px;color:#c9b9a8}
+  .fav.on{color:#e0a100}
+  .contador{background:#fff;border:1px solid var(--linha);border-radius:var(--raio);padding:8px 12px;margin:8px 0;font-size:.88rem}
+  .contador.cheio{border-color:var(--alerta);background:var(--alerta-bg);color:var(--alerta)}
+  .acoes button:disabled{opacity:.5;cursor:not-allowed}
   .isbn-lido{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;margin:4px 0 8px;font-size:.95rem}
   .isbn-lido b{font-size:1.1rem;letter-spacing:.04em}
   .isbn-lido .btn{padding:6px 10px;font-size:.85rem;margin-left:auto}
@@ -204,6 +211,9 @@
       <div id="listaPedAnos"></div>
       <h3 class="titulo-sec">📤 Os nossos pedidos <small>— quando o livro chegar, carrega em “Já recebemos”</small></h3>
       <div id="listaPedNossos"></div>
+      <div id="contadores"></div>
+      <h3 class="titulo-sec">⭐ Favoritos <small>— guardados para pedir mais tarde</small></h3>
+      <div id="listaFav"></div>
       <details><summary>Histórico de pedidos</summary><div id="histPed"></div></details>
     </section>
 
@@ -238,7 +248,7 @@ const DIAS_AVISO = 30;
 const CORES = {
   b1:  '#7a3e2a',   // biblioteca 1 — terracota
   b2:  '#1a9e94',   // biblioteca 2 — azul turquesa
-  b3:  '#ff00aa',   // biblioteca 3 — rosa
+  b3:  '#b85c82',   // biblioteca 3 — rosa velho (suave)
   b4:  '#e38383',   // biblioteca 4 — vermelho
   '*': '#3f4450'    // 🌐 Toda a rede — cinzento
 };
@@ -368,6 +378,16 @@ const pedidoAtivo = livroId => (DB.pedidos || []).find(p => p.livroId === livroI
 const minhasProprias = () => DB.eu.libs.length ? DB.eu.libs : (DB.eu.admin ? DB.bibliotecas.map(b => b.id) : []);
 /** Bibliotecas minhas que podem pedir este livro (todas menos a dona do livro). */
 const bibliotecasQuePedem = l => minhasProprias().filter(id => id !== l.biblioteca);
+/* ----- limite de pedidos ----- */
+const LIMITE = () => +DB.limitePedidos || 6;
+/** Livros da rede "em uso" por uma biblioteca: pedidos por responder + emprestados por outra biblioteca e ainda não devolvidos. */
+const emUso = libId => (DB.pedidos || []).filter(p => p.paraBiblioteca === libId && p.estado === 'pendente').length
+                    + DB.emprestimos.filter(e => e.paraBiblioteca === libId && !e.dataDevolucao).length;
+const temVaga = libId => emUso(libId) < LIMITE();
+/* ----- favoritos (por biblioteca) ----- */
+const favoritosDe = livroId => (DB.favoritos || []).filter(f => f.livroId === livroId);
+/** Biblioteca onde guardar o favorito: a escolhida no topo (se for minha), senão a primeira minha. */
+const bibFavorita = l => { const op = bibliotecasQuePedem(l); return op.includes(ESCOPO) ? ESCOPO : op[0]; };
 /** Para os separadores: numa biblioteca escolhida, essa; em "Toda a rede", as minhas. */
 const ehMinhaNoEscopo = id => ESCOPO === '*' ? minhasProprias().includes(id) : (id === ESCOPO && podeEditar(id));
 
@@ -492,13 +512,19 @@ function cardLivro(l) {
                    : `<span class="badge in">Disponível</span>`;
   // pedir emprestado: livro de outra biblioteca, livre, e eu tenho uma biblioteca para o receber
   const podePedir = !e && !ped && bibliotecasQuePedem(l).length;
+  const semVaga = podePedir && !bibliotecasQuePedem(l).some(temVaga);
+  const libFav = bibFavorita(l);
+  const ehFav = libFav && favoritosDe(l.id).some(f => f.biblioteca === libFav);
+  const estrela = libFav ? `<button class="fav ${ehFav ? 'on' : ''}" title="${ehFav ? 'Tirar dos favoritos' : 'Guardar nos favoritos'}" onclick="alternarFavorito('${l.id}')">${ehFav ? '★' : '☆'}</button>` : '';
   const souQuemPediu = ped && podeEditar(ped.paraBiblioteca) && DB.eu.libs.includes(ped.paraBiblioteca);
   const meta = [lista(l.categoria).join(' · '), l.dono && 'de ' + lista(l.dono).join(', ')].filter(Boolean).map(esc).join(' · ');
   // autores e coleção clicáveis: tocar mostra todos os livros desse autor / coleção
   const autores = lista(l.autor).map(a => `<a class="lnk" onclick="filtrarAutor(${jsArg(a)})">${esc(a)}</a>`).join(', ');
   const colecao = l.colecao ? `<p class="colecao"><a class="lnk" onclick="filtrarColecao(${jsArg(l.colecao)})">📚 ${esc(l.colecao)}</a></p>` : '';
   const botoes = [];
-  if (podePedir) botoes.push(`<button onclick="pedirLivro('${l.id}')">📩 Pedir emprestado</button>`);
+  if (podePedir) botoes.push(semVaga
+    ? `<button disabled title="Já têm ${LIMITE()} livros pedidos ou emprestados">📩 Limite de ${LIMITE()} atingido</button>`
+    : `<button onclick="pedirLivro('${l.id}')">📩 Pedir emprestado</button>`);
   if (souQuemPediu) botoes.push(`<button class="sec" onclick="cancelarPedido('${ped.id}')">Cancelar pedido</button>`);
   if (meu) {
     if (e) botoes.push(`<button onclick="devolver('${e.id}')">Já foi devolvido</button>`);
@@ -507,9 +533,9 @@ function cardLivro(l) {
     botoes.push(`<button class="sec" onclick="editarLivro('${l.id}')">Editar</button>`);
   }
   const acoes = botoes.length ? `<div class="acoes">${botoes.join('')}</div>` : '';
-  return `<article class="card ${l.biblioteca !== ESCOPO && ESCOPO !== '*' ? 'rede' : ''}">${capa(l, meu ? l.id : null)}<div class="info">
+  return `<article class="card ${l.biblioteca !== ESCOPO && ESCOPO !== '*' ? 'rede' : ''}">${estrela}${capa(l, meu ? l.id : null)}<div class="info">
     <h3>${esc(l.titulo)}</h3>${autores ? `<p>${autores}</p>` : ''}${colecao}${meta ? `<p>${meta}</p>` : ''}
-    ${l.isbn ? `<p>ISBN ${esc(l.isbn)}</p>` : ''}${notaHtml(l.notas)}${libBadge}${estado}${acoes}</div></article>`;
+    ${l.isbn ? `<p>ISBN ${esc(l.isbn)}</p>` : ''}${notaHtml(l.notas)}${libBadge}${estado}${DB.eu.admin && lista(l.ocultoPara).length ? `<span class="badge oculto">🙈 escondido de ${lista(l.ocultoPara).map(nomeLib).map(esc).join(', ')}</span>` : ''}${acoes}</div></article>`;
 }
 function cardRecebido(r, comAcoes = true) {
   const d = dias(r.dataRecebido);
@@ -804,6 +830,7 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
       <label>Categorias <span class="dica">(toca para escolher uma ou várias)</span></label>
       ${campoCategoria(px, d.categoria || (DB.categorias.includes(d.categoriaSugerida) ? d.categoriaSugerida : ''))}
       ${d.categoriaSugerida && !d.categoria ? `<div class="dica">Categoria sugerida pela Biblioteca Nacional — confirma.</div>` : ''}
+      ${DB.eu.admin ? campoOculto(px, d.ocultoPara, d.biblioteca) : ''}
       ${campoPessoa(px + 'dono', 'Donos <span class="dica">(um ou vários)</span>', modo === 'editarRec' ? '' : (modo === 'novo' ? (d.dono || ler('rede_ultimoDono') || '') : d.dono), true)}
     </div>
     <div class="${px}so-recebido">
@@ -823,7 +850,8 @@ function formLivro(d, modo, px, tipoInicial = 'nosso') {
 }
 function ligarForm(px) {
   if (!$('#' + px + 'titulo')) return;
-  mudarTipo(px); renderCategorias(px);
+  mudarTipo(px); renderCategorias(px); renderOculto(px);
+  const selLib = $('#' + px + 'biblioteca'); if (selLib) selLib.onchange = () => renderOculto(px);
   ['dono', 'comQuem'].forEach(k => mostrarChips(px + k));
   // num registo novo, "Quem nos emprestou" mostra também as bibliotecas da rede (🏠)
   mostrarChips(px + 'donoRec', $('#' + px + 'tipos') ? DB.bibliotecas : []);
@@ -834,6 +862,25 @@ function mudarTipo(px) {
   document.querySelectorAll('.' + px + 'so-nosso').forEach(e => e.classList.toggle('hidden', t !== 'nosso'));
   document.querySelectorAll('.' + px + 'so-recebido').forEach(e => e.classList.toggle('hidden', t !== 'recebido'));
   document.querySelectorAll(`#${px}tipos label`).forEach(l => l.classList.toggle('sel', l.querySelector('input').checked));
+}
+/* esconder o livro de certas bibliotecas (só quem gere o livro vê esta opção) */
+function campoOculto(px, valor, libDoLivro) {
+  return `<label>🙈 Esconder de <span class="dica">(essas bibliotecas não veem este livro nem sabem que existe)</span></label>
+    <input type="hidden" id="${px}ocultoPara" value="${esc(lista(valor).join(', '))}" data-lib="${esc(libDoLivro || '')}">
+    <div class="chips" id="${px}ocultoPara-chips"></div>`;
+}
+function renderOculto(px) {
+  const inp = $('#' + px + 'ocultoPara'); if (!inp) return;
+  const lib = ($('#' + px + 'biblioteca') || {}).value || inp.dataset.lib;
+  $('#' + px + 'ocultoPara-chips').innerHTML = DB.bibliotecas.filter(b => b.id !== lib).map(b => {
+    const on = lista(inp.value).includes(b.id);
+    return `<button type="button" class="chip ${on ? 'excl' : ''}" onclick="alternarOculto('${px}','${esc(b.id)}')">${on ? '🙈 ' : ''}${esc(b.nome)}</button>`;
+  }).join('');
+}
+function alternarOculto(px, id) {
+  const inp = $('#' + px + 'ocultoPara'), atual = lista(inp.value);
+  inp.value = (atual.includes(id) ? atual.filter(x => x !== id) : [...atual, id]).join(', ');
+  renderOculto(px);
 }
 /* categorias: várias por livro, guardadas como "Infantil, Animais" */
 function campoCategoria(px, valor) {
@@ -930,7 +977,8 @@ async function guardarForm(ev, px, modo) {
     ok = modo === 'editarRec' ? await gravar('editRecebido', { id, ...p }, 'Atualizado ✔') : await gravar('addRecebido', p, 'Registado como emprestado a nós ✔');
   } else {
     const p = { ...base, ano: g('ano'), editora: g('editora'), colecao: g('colecao'),
-                categoria: lista(g('categoria')).join(', '), dono: lista(g('dono')).join(', ') };
+                categoria: lista(g('categoria')).join(', '), dono: lista(g('dono')).join(', '),
+                ...(DB.eu.admin ? { ocultoPara: lista(g('ocultoPara')).filter(id => id !== g('biblioteca')).join(', ') } : {}) };
     if (modo === 'novo') guardar('rede_ultimoDono', p.dono || null);   // o próximo livro já vem com este dono
     ok = modo === 'editar' ? await gravar('editLivro', { id, ...p }, 'Atualizado ✔') : await gravar('addLivro', p, 'Livro guardado ✔');
   }
@@ -996,14 +1044,15 @@ function renderEmprestados() {
 /* ---------- reservas (pedidos de empréstimo) ---------- */
 function pedirLivro(livroId) {
   const l = DB.livros.find(x => x.id === livroId); if (!l) return;
-  const opcoes = bibliotecasQuePedem(l);
+  const opcoes = bibliotecasQuePedem(l).filter(temVaga);
+  if (!opcoes.length) return toast(`Já têm ${LIMITE()} livros pedidos ou emprestados. Devolvam um antes de pedir outro.`, 5000);
   const pre = opcoes.includes(ESCOPO) ? ESCOPO : opcoes[0];
   abrirDlg(`<h2>📩 Pedir emprestado</h2>
     <p style="margin:0">${esc(l.titulo)}</p>
     <p class="dica" style="margin-top:2px">de 🏠 ${esc(nomeLib(l.biblioteca))}</p>
     ${opcoes.length > 1 ? `<label>Para que biblioteca?</label>
-      <select id="ped-para">${opcoes.map(id => `<option value="${esc(id)}" ${id === pre ? 'selected' : ''}>${esc(nomeLib(id))}</option>`).join('')}</select>`
-      : `<input type="hidden" id="ped-para" value="${esc(opcoes[0])}"><p class="dica">Para: 🏠 ${esc(nomeLib(opcoes[0]))}</p>`}
+      <select id="ped-para">${opcoes.map(id => `<option value="${esc(id)}" ${id === pre ? 'selected' : ''}>${esc(nomeLib(id))} (${emUso(id)}/${LIMITE()})</option>`).join('')}</select>`
+      : `<input type="hidden" id="ped-para" value="${esc(opcoes[0])}"><p class="dica">Para: 🏠 ${esc(nomeLib(opcoes[0]))} · ${emUso(opcoes[0])} de ${LIMITE()} livros em uso</p>`}
     <label>Mensagem (opcional)</label><input id="ped-notas" placeholder="ex.: podemos ir buscar no sábado">
     <p class="dica">O livro fica reservado para vocês. A outra biblioteca recebe um email e, quando vos entregar o livro, marca-o como entregue.</p>
     <div class="botoes"><button class="btn sec" onclick="fecharDlg()">Cancelar</button>
@@ -1069,6 +1118,31 @@ function renderReservas() {
     .sort((a, b) => (b.dataResposta || '').localeCompare(a.dataResposta || '')).slice(0, 100);
   $('#histPed').innerHTML = hist.length ? hist.map(p => `<p class="dica">• <b>${esc(p.titulo)}</b> — de ${esc(nomeLib(p.biblioteca))} para ${esc(nomeLib(p.paraBiblioteca))} · ${estados[p.estado] || esc(p.estado)} ${fmt(p.dataResposta)}${p.notas ? ' · 💬 ' + esc(p.notas) : ''}</p>`).join('') : '<p class="dica">Sem histórico ainda.</p>';
   $('#bolRes').classList.toggle('hidden', !aNos.length); $('#bolRes').textContent = aNos.length;
+
+  // contador do limite, para cada uma das minhas bibliotecas visíveis
+  const minhas = minhasProprias().filter(id => ESCOPO === '*' || id === ESCOPO);
+  $('#contadores').innerHTML = minhas.map(id => {
+    const n = emUso(id), cheio = n >= LIMITE();
+    return `<div class="contador ${cheio ? 'cheio' : ''}">📚 ${minhas.length > 1 || ESCOPO === '*' ? esc(nomeLib(id)) + ': ' : ''}<b>${n} de ${LIMITE()}</b> livros da rede (pedidos + emprestados)${cheio ? ' — devolvam um para poderem pedir outro' : ''}</div>`;
+  }).join('');
+
+  // favoritos das minhas bibliotecas visíveis
+  const favs = (DB.favoritos || []).filter(f => ehMinhaNoEscopo(f.biblioteca))
+    .map(f => DB.livros.find(l => l.id === f.livroId)).filter(Boolean);
+  $('#listaFav').innerHTML = favs.length ? [...new Set(favs)].sort(porTitulo).map(cardLivro).join('')
+    : `<div class="vazio">${minhasProprias().length ? 'Ainda não há favoritos. Toca na ☆ de um livro de outra biblioteca para o guardar aqui.' : ''}</div>`;
+}
+
+async function alternarFavorito(livroId) {
+  const l = DB.livros.find(x => x.id === livroId); if (!l) return;
+  const lib = bibFavorita(l); if (!lib) return;
+  const ligar = !favoritosDe(livroId).some(f => f.biblioteca === lib);
+  // muda logo no ecrã e grava em segundo plano
+  if (ligar) DB.favoritos = [...(DB.favoritos || []), { id: 'tmp', biblioteca: lib, livroId }];
+  else DB.favoritos = DB.favoritos.filter(f => !(f.biblioteca === lib && f.livroId === livroId));
+  renderTudo();
+  try { DB = await api('favorito', { livroId, biblioteca: lib, ligar }, { silencioso: true }); guardarCache(); renderTudo(); toast(ligar ? '⭐ Guardado nos favoritos' : 'Tirado dos favoritos'); }
+  catch (e) { toast('⚠️ ' + e.message, 4000); try { DB = await api('tudo', {}, { silencioso: true }); renderTudo(); } catch (_) {} }
 }
 
 function renderRecebidos() {
