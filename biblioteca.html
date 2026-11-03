@@ -607,19 +607,17 @@ function pesquisar() {
 
   const livros = DB.livros.filter(l => noEscopo(l.biblioteca) && filtra(l)).sort(porTitulo);
   const recs = ($('#fRec').checked && !filtrosDeLivro) ? recAtivos().filter(r => noEscopo(r.biblioteca) && bate(r)).sort(porTitulo) : [];
-  const fora = (ESCOPO !== '*' && (q || cat || col || FILTRO_AUTOR)) ? DB.livros.filter(l => l.biblioteca !== ESCOPO && filtra(l)).sort(porTitulo) : [];
 
   const nTotal = DB.livros.filter(l => noEscopo(l.biblioteca)).length;
   $('#resumo').textContent = `${ESCOPO === '*' ? 'Toda a rede' : nomeLib(ESCOPO)}: ${nTotal} livros`;
 
   let html = '';
-  if (!nTotal && !recs.length && !fora.length) html = `<div class="vazio">Ainda não há livros aqui.${podeEditar(ESCOPO) ? '<br>Carrega em <b>📷</b> e aponta para o código de barras de um livro.' : ''}</div>`;
-  else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde à pesquisa${inf ? ' (com o filtro 🧸 Só infantis ligado)' : ''}.</div>`;
+  if (!nTotal && !recs.length) html = `<div class="vazio">Ainda não há livros aqui.${podeEditar(ESCOPO) ? '<br>Carrega em <b>📷</b> e aponta para o código de barras de um livro.' : ''}</div>`;
+  else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde à pesquisa${inf ? ' (com o filtro 🧸 Só infantis ligado)' : ''}.${ESCOPO !== '*' ? `<div class="acoes"><button class="sec" onclick="mudarEscopo('*')">🌐 Procurar em toda a rede</button></div>` : ''}</div>`;
   else {
     if (q || filtrosDeLivro) html += `<div class="contagem">${livros.length} encontrado(s)${recs.length ? ` + ${recs.length} emprestado(s) por outros` : ''}</div>`;
     html += livros.map(cardLivro).join('') + recs.map(r => cardRecebido(r)).join('');
   }
-  if (fora.length) html += `<h3 class="subtitulo">🌐 Noutras bibliotecas da rede (${fora.length})</h3>` + fora.map(cardLivro).join('');
   $('#resultados').innerHTML = html;
 }
 
