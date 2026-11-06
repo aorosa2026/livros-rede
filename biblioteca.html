@@ -64,6 +64,7 @@
   .badge.atraso{background:var(--alerta-bg);color:var(--alerta)}
   .badge.lib{background:var(--rede-bg);color:var(--rede)}
   .badge.res{background:#efe7fb;color:#5b3a9e}
+  .badge.caminho{background:#e3f2fd;color:#1565c0}
   .badge.oculto{background:#eceff1;color:#455a64}
   .card{position:relative}
   .fav{position:absolute;top:8px;right:8px;border:0;background:none;font-size:1.35rem;line-height:1;padding:4px;color:#c9b9a8}
@@ -508,7 +509,8 @@ function cardLivro(l) {
   const e = empAtivo(l.id), ped = pedidoAtivo(l.id), meu = podeEditar(l.biblioteca);
   const libBadge = (ESCOPO === '*' || l.biblioteca !== ESCOPO) ? `<span class="badge lib">🏠 ${esc(nomeLib(l.biblioteca))}</span>` : '';
   const estado = e ? `<span class="badge out">Emprestado a ${esc(e.paraBiblioteca ? nomeLib(e.paraBiblioteca) : e.pessoa)} · há ${dias(e.dataEmprestimo)} dias</span>`
-               : ped ? `<span class="badge res">🔖 Reservado para ${esc(nomeLib(ped.paraBiblioteca))}</span>`
+               : ped ? (ped.dataCaminho ? `<span class="badge caminho">🚚 A caminho de ${esc(nomeLib(ped.paraBiblioteca))}</span>`
+                                        : `<span class="badge res">🔖 Reservado para ${esc(nomeLib(ped.paraBiblioteca))}</span>`)
                    : `<span class="badge in">Disponível</span>`;
   // pedir emprestado: livro de outra biblioteca, livre, e eu tenho uma biblioteca para o receber
   const podePedir = !e && !ped && bibliotecasQuePedem(l).length;
@@ -1060,6 +1062,10 @@ async function confirmarPedido(livroId) {
   const payload = { livroId, paraBiblioteca: $('#ped-para').value, notas: $('#ped-notas').value.trim() };
   if (await gravar('pedir', payload, 'Pedido feito — o livro ficou reservado para vocês ✔')) fecharDlg();
 }
+async function caminhoPedido(id, ligar = true) {
+  if (!ligar && !confirm('Afinal o livro ainda não saiu?')) return;
+  gravar('caminhoPedido', { id, ligar, data: hojeISO() }, ligar ? '🚚 Marcado como a caminho' : 'Voltou a “pedido”');
+}
 async function cancelarPedido(id) {
   if (confirm('Cancelar este pedido? O livro deixa de estar reservado.')) gravar('cancelarPedido', { id }, 'Pedido cancelado');
 }
@@ -1078,6 +1084,10 @@ async function recusarPedido(id) {
   if (motivo === null) return;   // carregou em Cancelar
   gravar('recusarPedido', { id, motivo: motivo.trim() }, 'Pedido recusado');
 }
+/** Botão "🚚 A caminho" (ou "Ainda não saiu" para desfazer), para quem leva o livro. */
+const botaoCaminho = p => p.dataCaminho
+  ? `<button class="sec" onclick="caminhoPedido('${p.id}', false)">↩︎ Ainda não saiu</button>`
+  : `<button class="sec" onclick="caminhoPedido('${p.id}')">🚚 A caminho</button>`;
 function cardPedido(p, lado) {
   const l = DB.livros.find(x => x.id === p.livroId) || { titulo: p.titulo };
   const quem = lado === 'aNos'
@@ -1089,17 +1099,19 @@ function cardPedido(p, lado) {
     const emp = empAtivo(p.livroId);
     acoes = emp
       ? `<p class="dica">Ainda está emprestado a ${esc(emp.pessoa)} — quando voltar, podes entregá-lo.</p>`
-      : `<div class="acoes"><button onclick="entregarPedido('${p.id}')">📦 Entregue</button><button class="sec" onclick="recusarPedido('${p.id}')">Recusar</button></div>`;
+      : `<div class="acoes">${botaoCaminho(p)}<button onclick="entregarPedido('${p.id}')">📦 Entregue</button><button class="sec" onclick="recusarPedido('${p.id}')">Recusar</button></div>`;
   }
   if (lado === 'nosso' && podeEditar(p.paraBiblioteca)) {
     const emp = empAtivo(p.livroId);
     acoes = emp
       ? `<p class="dica">Ainda está emprestado a ${esc(emp.pessoa)} — esperem que seja devolvido.</p><div class="acoes"><button class="sec" onclick="cancelarPedido('${p.id}')">Cancelar pedido</button></div>`
-      : `<div class="acoes"><button onclick="receberPedido('${p.id}')">📦 Já recebemos</button><button class="sec" onclick="cancelarPedido('${p.id}')">Cancelar pedido</button></div>`;
+      : `<div class="acoes">${botaoCaminho(p)}<button onclick="receberPedido('${p.id}')">📦 Já recebemos</button><button class="sec" onclick="cancelarPedido('${p.id}')">Cancelar pedido</button></div>`;
   }
   return `<article class="card">${capa(l)}<div class="info"><h3>${esc(p.titulo)}</h3>
     <p>${quem}</p><p>a ${fmt(p.dataPedido)}</p>${notaHtml(p.notas, '💬')}
-    <span class="badge res">🔖 ${d === 0 ? 'Hoje' : `Há ${d} dia${d === 1 ? '' : 's'}`}</span>${acoes}</div></article>`;
+    ${p.dataCaminho
+      ? `<span class="badge caminho">🚚 A caminho desde ${fmt(p.dataCaminho)}${p.caminhoPor ? ' · leva ' + esc(nomeLib(p.caminhoPor)) : ''}</span>`
+      : `<span class="badge res">🔖 Pedido ${d === 0 ? 'hoje' : `há ${d} dia${d === 1 ? '' : 's'}`}</span>`}${acoes}</div></article>`;
 }
 function renderReservas() {
   const pedidos = DB.pedidos || [];
