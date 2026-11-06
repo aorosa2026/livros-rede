@@ -64,6 +64,7 @@
   .badge.atraso{background:var(--alerta-bg);color:var(--alerta)}
   .badge.lib{background:var(--rede-bg);color:var(--rede)}
   .badge.res{background:#efe7fb;color:#5b3a9e}
+  .gravando{display:block;background:#fff3;border-radius:10px;padding:1px 8px;margin-bottom:2px;font-weight:600}
   .badge.caminho{background:#e3f2fd;color:#1565c0}
   .badge.oculto{background:#eceff1;color:#455a64}
   .card{position:relative}
@@ -158,7 +159,7 @@
 <div id="app" class="hidden">
   <header>
     <h1>📚 Bibliotecas da Rede</h1>
-    <div class="eu"><span id="meuEmail"></span><br><a href="#" onclick="sair();return false">Sair</a></div>
+    <div class="eu"><span id="estadoGravar" class="gravando hidden"></span><span id="meuEmail"></span><br><a href="#" onclick="sair();return false">Sair</a></div>
   </header>
   <div class="libs" id="barraLibs"></div>
   <div id="aviso" class="aviso hidden" onclick="irParaAtrasados()"></div>
@@ -331,9 +332,108 @@ async function api(action, payload = {}, opcoes = {}) {
     throw new Error(j.erro);
   } finally { if (!opcoes.silencioso) $('#loading').classList.remove('on'); }
 }
+/* ================= GRAVAR COM RESPOSTA IMEDIATA =================
+   O ecrã muda logo; a gravação segue numa fila, em segundo plano.
+   No fim da fila, a app fica com os dados exatos do servidor.
+   Se o servidor recusar alguma coisa, avisa e repõe o estado verdadeiro. */
+let FILA = Promise.resolve(), PENDENTES = 0, HOUVE_ERRO = false, ULTIMO_SERVIDOR = null;
+function mostrarEstadoGravar() {
+  const el = $('#estadoGravar'); if (!el) return;
+  el.textContent = PENDENTES ? `⏳ a gravar${PENDENTES > 1 ? ' (' + PENDENTES + ')' : ''}…` : '';
+  el.classList.toggle('hidden', !PENDENTES);
+}
+window.addEventListener('beforeunload', e => { if (PENDENTES) { e.preventDefault(); e.returnValue = ''; } });
+const temTmp = o => Object.values(o || {}).some(v => typeof v === 'string' && v.startsWith('tmp_'));
+
 async function gravar(action, payload, msg) {
-  try { DB = await api(action, payload); guardarCache(); renderTudo(); if (msg) toast(msg); return true; }
-  catch (e) { toast('⚠️ ' + e.message, 4000); return false; }
+  if (temTmp(payload)) { toast('Ainda a gravar o passo anterior — tenta daqui a um instante.', 3500); return false; }
+  if (!aplicarLocal(action, payload)) {
+    // ações sem resposta imediata: espera pelo servidor, como antes
+    try { DB = await api(action, payload); guardarCache(); renderTudo(); if (msg) toast(msg); return true; }
+    catch (e) { toast('⚠️ ' + e.message, 4000); return false; }
+  }
+  renderTudo(); if (msg) toast(msg);
+  PENDENTES++; mostrarEstadoGravar();
+  FILA = FILA.then(async () => {
+    try { ULTIMO_SERVIDOR = await api(action, payload, { silencioso: true }); }
+    catch (e) { HOUVE_ERRO = true; toast('⚠️ Não foi gravado: ' + e.message, 7000); }
+    finally {
+      PENDENTES--;
+      if (!PENDENTES) {
+        if (HOUVE_ERRO) {   // repõe o estado verdadeiro
+          HOUVE_ERRO = false;
+          try { ULTIMO_SERVIDOR = await api('tudo', {}, { silencioso: true }); } catch (_) {}
+        }
+        if (ULTIMO_SERVIDOR && !PENDENTES) { DB = ULTIMO_SERVIDOR; ULTIMO_SERVIDOR = null; guardarCache(); renderTudo(); }
+      }
+      mostrarEstadoGravar();
+    }
+  });
+  return true;
+}
+
+/** Faz no ecrã, de imediato, o que o servidor vai fazer. Devolve false se a ação não tiver resposta imediata. */
+function aplicarLocal(a, p) {
+  const tmp = () => 'tmp_' + Math.random().toString(36).slice(2, 9);
+  const hoje = hojeISO();
+  DB.pedidos = DB.pedidos || []; DB.favoritos = DB.favoritos || [];
+  const L = DB.livros, E = DB.emprestimos, R = DB.recebidos, P = DB.pedidos;
+  const acha = (arr, id) => arr.find(x => x.id === id);
+  const tiraFav = (lib, livroId) => { DB.favoritos = DB.favoritos.filter(f => !(f.biblioteca === lib && f.livroId === livroId)); };
+  const comIsbn = o => { const q = { ...o }; if ('isbn' in q) q.isbn = normIsbn(q.isbn); return q; };
+  switch (a) {
+    case 'addLivro': L.push({ ...comIsbn(p), id: tmp() }); return true;
+    case 'editLivro': { const l = acha(L, p.id); if (!l) return false; Object.assign(l, comIsbn(p)); return true; }
+    case 'delLivro': DB.livros = L.filter(x => x.id !== p.id); P.forEach(x => { if (x.livroId === p.id && x.estado === 'pendente') x.estado = 'cancelado'; }); return true;
+    case 'emprestar': {
+      const l = acha(L, p.livroId); if (!l) return false;
+      E.push({ id: tmp(), biblioteca: l.biblioteca, livroId: l.id, isbn: l.isbn, titulo: l.titulo, pessoa: p.paraBiblioteca ? nomeLib(p.paraBiblioteca) : p.pessoa,
+               paraBiblioteca: p.paraBiblioteca || '', dataEmprestimo: p.data || hoje, dataDevolucao: '', notas: p.notas || '' });
+      const r = pedidoAtivo(l.id); if (r && r.paraBiblioteca === (p.paraBiblioteca || '')) { r.estado = 'entregue'; r.dataResposta = hoje; }
+      if (p.paraBiblioteca) tiraFav(p.paraBiblioteca, l.id);
+      return true;
+    }
+    case 'devolver': { const e = acha(E, p.id); if (!e) return false; e.dataDevolucao = p.data || hoje; return true; }
+    case 'pedir': {
+      const l = acha(L, p.livroId); if (!l) return false;
+      P.push({ id: tmp(), livroId: l.id, biblioteca: l.biblioteca, paraBiblioteca: p.paraBiblioteca, isbn: l.isbn, titulo: l.titulo, dataPedido: hoje, estado: 'pendente', notas: p.notas || '', dataCaminho: '' });
+      return true;
+    }
+    case 'cancelarPedido': case 'recusarPedido': {
+      const x = acha(P, p.id); if (!x) return false;
+      x.estado = a === 'cancelarPedido' ? 'cancelado' : 'recusado'; x.dataResposta = hoje; return true;
+    }
+    case 'caminhoPedido': {
+      const x = acha(P, p.id); if (!x) return false;
+      const ligar = p.ligar !== false;
+      x.dataCaminho = ligar ? (p.data || hoje) : ''; x.caminhoPor = ligar ? (podeEditar(x.biblioteca) ? x.biblioteca : x.paraBiblioteca) : '';
+      return true;
+    }
+    case 'entregarPedido': {
+      const x = acha(P, p.id); if (!x) return false;
+      x.estado = 'entregue'; x.dataResposta = p.data || hoje;
+      E.push({ id: tmp(), biblioteca: x.biblioteca, livroId: x.livroId, isbn: x.isbn, titulo: x.titulo, pessoa: nomeLib(x.paraBiblioteca),
+               paraBiblioteca: x.paraBiblioteca, dataEmprestimo: p.data || hoje, dataDevolucao: '', notas: x.notas || '' });
+      tiraFav(x.paraBiblioteca, x.livroId);
+      return true;
+    }
+    case 'addRecebido': R.push({ ...comIsbn(p), id: tmp(), dataRecebido: p.dataRecebido || hoje, dataDevolvido: '' }); return true;
+    case 'editRecebido': { const r = acha(R, p.id); if (!r) return false; Object.assign(r, comIsbn(p)); return true; }
+    case 'devolverRecebido': { const r = acha(R, p.id); if (!r) return false; r.dataDevolvido = p.data || hoje; return true; }
+    case 'delRecebido': DB.recebidos = R.filter(x => x.id !== p.id); return true;
+    case 'receberDaRede': {
+      const idL = tmp(), isbn = normIsbn(p.isbn);
+      L.push({ id: idL, biblioteca: p.deBiblioteca, isbn, titulo: p.titulo, autor: p.autor || '', categoria: p.categoria || '', dono: '', capa: p.capa || '', colecao: p.colecao || '' });
+      E.push({ id: tmp(), biblioteca: p.deBiblioteca, livroId: idL, isbn, titulo: p.titulo, pessoa: nomeLib(p.paraBiblioteca), paraBiblioteca: p.paraBiblioteca,
+               dataEmprestimo: p.dataRecebido || hoje, dataDevolucao: '', notas: p.notas || '' });
+      return true;
+    }
+    case 'favorito':
+      if (p.ligar) { if (!DB.favoritos.some(f => f.biblioteca === p.biblioteca && f.livroId === p.livroId)) DB.favoritos.push({ id: tmp(), biblioteca: p.biblioteca, livroId: p.livroId }); }
+      else tiraFav(p.biblioteca, p.livroId);
+      return true;
+    default: return false;   // ex.: criar categoria — espera pelo servidor
+  }
 }
 function toast(t, ms = 2400) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), ms); }
 
@@ -358,7 +458,7 @@ async function arrancar() {
     const c = JSON.parse(localStorage.getItem(chaveCache()) || 'null');
     if (c && c.eu && c.livros) { DB = c; mostrarApp(); jaMostrou = true; }   // abre logo com os últimos dados
   } catch (e) {}
-  try { DB = await api('tudo', {}, { silencioso: jaMostrou }); guardarCache(); }
+  try { const d = await api('tudo', {}, { silencioso: jaMostrou }); if (!PENDENTES) { DB = d; guardarCache(); } }
   catch (e) {
     if (jaMostrou) return toast('Sem ligação ao servidor — estás a ver os últimos dados guardados.', 4500);
     const m = $('#msgLogin');
@@ -474,7 +574,7 @@ function capa(o, livroId) {
 /* ---------- fotos de capa ---------- */
 let ALVO_CAPA = null;   // { px } (formulário aberto) ou { livroId } (cartão do livro)
 function escolherFotoCapa(px) { ALVO_CAPA = { px }; $('#fotoCapa').click(); }
-function fotoParaLivro(id) { ALVO_CAPA = { livroId: id }; $('#fotoCapa').click(); }
+function fotoParaLivro(id) { if (id.startsWith('tmp_')) return toast('Ainda a gravar este livro — tenta daqui a um instante.'); ALVO_CAPA = { livroId: id }; $('#fotoCapa').click(); }
 
 /** Reduz a foto (máx. 600 px) para ficar leve e rápida a carregar. */
 async function reduzirImagem(file, max = 600) {
@@ -1147,12 +1247,7 @@ async function alternarFavorito(livroId) {
   const l = DB.livros.find(x => x.id === livroId); if (!l) return;
   const lib = bibFavorita(l); if (!lib) return;
   const ligar = !favoritosDe(livroId).some(f => f.biblioteca === lib);
-  // muda logo no ecrã e grava em segundo plano
-  if (ligar) DB.favoritos = [...(DB.favoritos || []), { id: 'tmp', biblioteca: lib, livroId }];
-  else DB.favoritos = DB.favoritos.filter(f => !(f.biblioteca === lib && f.livroId === livroId));
-  renderTudo();
-  try { DB = await api('favorito', { livroId, biblioteca: lib, ligar }, { silencioso: true }); guardarCache(); renderTudo(); toast(ligar ? '⭐ Guardado nos favoritos' : 'Tirado dos favoritos'); }
-  catch (e) { toast('⚠️ ' + e.message, 4000); try { DB = await api('tudo', {}, { silencioso: true }); renderTudo(); } catch (_) {} }
+  gravar('favorito', { livroId, biblioteca: lib, ligar }, ligar ? '⭐ Guardado nos favoritos' : 'Tirado dos favoritos');
 }
 
 function renderRecebidos() {
