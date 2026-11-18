@@ -5,9 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#7a3e2a">
-<link rel="icon" type="image/png" sizes="512x512" href="bibliotecas-rede-512.png">
-<link rel="apple-touch-icon" sizes="180x180" href="bibliotecas-rede-180.png">
 <title>Bibliotecas da Rede</title>
+<!-- app instalável -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bibliotecas da Rede">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <script src="https://accounts.google.com/gsi/client" async></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
@@ -1258,6 +1263,11 @@ function renderRecebidos() {
   $('#listaRec').innerHTML = ativos.length ? ativos.map(r => cardRecebido(r)).join('') : `<div class="vazio">Não há livros emprestados por outras pessoas.</div>`;
   const hist = todos.filter(r => r.dataDevolvido).sort((a, b) => b.dataDevolvido.localeCompare(a.dataDevolvido)).slice(0, 100);
   $('#histRec').innerHTML = hist.length ? hist.map(r => cardRecebido(r, false)).join('') : '<p class="dica">Sem histórico ainda.</p>';
+}
+
+/* ---------- app instalável: só guarda a casca pública da app, nunca dados (ver sw.js) ---------- */
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
 /* ---------- arranque ---------- */
