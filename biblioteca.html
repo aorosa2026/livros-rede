@@ -401,6 +401,7 @@ function aplicarLocal(a, p) {
       return true;
     }
     case 'devolver': { const e = acha(E, p.id); if (!e) return false; e.dataDevolucao = p.data || hoje; return true; }
+    case 'devolucaoCaminho': { const e = acha(E, p.id); if (!e) return false; e.dataDevolvidoEnviado = p.ligar === false ? '' : (p.data || hoje); return true; }
     case 'pedir': {
       const l = acha(L, p.livroId); if (!l) return false;
       P.push({ id: tmp(), livroId: l.id, biblioteca: l.biblioteca, paraBiblioteca: p.paraBiblioteca, isbn: l.isbn, titulo: l.titulo, dataPedido: hoje, estado: 'pendente', notas: p.notas || '', dataCaminho: '' });
@@ -490,7 +491,7 @@ const bibliotecasQuePedem = l => minhasProprias().filter(id => id !== l.bibliote
 const LIMITE = () => +DB.limitePedidos || 6;
 /** Livros da rede "em uso" por uma biblioteca: pedidos por responder + emprestados por outra biblioteca e ainda não devolvidos. */
 const emUso = libId => (DB.pedidos || []).filter(p => p.paraBiblioteca === libId && p.estado === 'pendente').length
-                    + DB.emprestimos.filter(e => e.paraBiblioteca === libId && !e.dataDevolucao).length;
+                    + DB.emprestimos.filter(e => e.paraBiblioteca === libId && !e.dataDevolucao && !e.dataDevolvidoEnviado).length;
 const temVaga = libId => emUso(libId) < LIMITE();
 /* ----- favoritos (por biblioteca) ----- */
 const favoritosDe = livroId => (DB.favoritos || []).filter(f => f.livroId === livroId);
@@ -505,7 +506,8 @@ function itensRecebidos() {
   const rede = DB.emprestimos.filter(e => e.paraBiblioteca).map(e => {
     const l = DB.livros.find(x => x.id === e.livroId) || {};
     return { tipo: 'rede', id: e.id, biblioteca: e.paraBiblioteca, origem: e.biblioteca, titulo: e.titulo, autor: l.autor || '',
-             capa: l.capa || '', isbn: e.isbn, dono: nomeLib(e.biblioteca), dataRecebido: e.dataEmprestimo, dataDevolvido: e.dataDevolucao };
+             capa: l.capa || '', isbn: e.isbn, dono: nomeLib(e.biblioteca), dataRecebido: e.dataEmprestimo,
+             dataDevolvido: e.dataDevolucao || e.dataDevolvidoEnviado, aCaminho: !e.dataDevolucao && !!e.dataDevolvidoEnviado };
   });
   return manuais.concat(rede);
 }
@@ -615,7 +617,8 @@ async function receberFotoCapa(input) {
 function cardLivro(l) {
   const e = empAtivo(l.id), ped = pedidoAtivo(l.id), meu = podeEditar(l.biblioteca);
   const libBadge = (ESCOPO === '*' || l.biblioteca !== ESCOPO) ? `<span class="badge lib">🏠 ${esc(nomeLib(l.biblioteca))}</span>` : '';
-  const estado = e ? `<span class="badge out">Emprestado a ${esc(e.paraBiblioteca ? nomeLib(e.paraBiblioteca) : e.pessoa)} · há ${dias(e.dataEmprestimo)} dias</span>`
+  const estado = e && e.dataDevolvidoEnviado ? `<span class="badge caminho">↩︎ A regressar de ${esc(nomeLib(e.paraBiblioteca))} desde ${fmt(e.dataDevolvidoEnviado)}</span>`
+               : e ? `<span class="badge out">Emprestado a ${esc(e.paraBiblioteca ? nomeLib(e.paraBiblioteca) : e.pessoa)} · há ${dias(e.dataEmprestimo)} dias</span>`
                : ped ? (ped.dataCaminho ? `<span class="badge caminho">🚚 A caminho de ${esc(nomeLib(ped.paraBiblioteca))}</span>`
                                         : `<span class="badge res">🔖 Reservado para ${esc(nomeLib(ped.paraBiblioteca))}</span>`)
                    : `<span class="badge in">Disponível</span>`;
@@ -636,7 +639,7 @@ function cardLivro(l) {
     : `<button onclick="pedirLivro('${l.id}')">📩 Pedir emprestado</button>`);
   if (souQuemPediu) botoes.push(`<button class="sec" onclick="cancelarPedido('${ped.id}')">Cancelar pedido</button>`);
   if (meu) {
-    if (e) botoes.push(`<button onclick="devolver('${e.id}')">Já foi devolvido</button>`);
+    if (e) botoes.push(e.dataDevolvidoEnviado ? `<button onclick="receberDevolucao('${e.id}')">📦 Recebido</button>` : `<button onclick="devolver('${e.id}')">Já foi devolvido</button>`);
     else if (ped) botoes.push(`<button onclick="mudarTab('reservas')">Ver pedido</button>`);
     else botoes.push(`<button class="sec" onclick="abrirEmprestar('${l.id}')">Emprestar</button>`);
     botoes.push(`<button class="sec" onclick="editarLivro('${l.id}')">Editar</button>`);
@@ -649,16 +652,21 @@ function cardLivro(l) {
 function cardRecebido(r, comAcoes = true) {
   const d = dias(r.dataRecebido);
   const libBadge = ESCOPO === '*' ? `<span class="badge lib">📥 para ${esc(nomeLib(r.biblioteca))}</span>` : '';
-  const badge = r.dataDevolvido ? `<span class="badge in">Devolvido a ${fmt(r.dataDevolvido)}</span>`
+  const badge = r.aCaminho ? `<span class="badge caminho">↩︎ Devolução a caminho desde ${fmt(r.dataDevolvido)}</span>`
+    : r.dataDevolvido ? `<span class="badge in">Devolvido a ${fmt(r.dataDevolvido)}</span>`
     : d >= DIAS_AVISO ? `<span class="badge atraso">⚠️ Devolver! Está cá há ${d} dias</span>`
     : `<span class="badge out">Há ${d} dias</span>`;
   let acoes = '';
   if (comAcoes && !r.dataDevolvido) {
-    if (r.tipo === 'rede' && (podeEditar(r.biblioteca) || podeEditar(r.origem)))
-      acoes = `<div class="acoes"><button onclick="devolver('${r.id}')">Já devolvemos</button></div>`;
+    if (r.tipo === 'rede' && podeEditar(r.biblioteca))
+      acoes = `<div class="acoes"><button onclick="devolucaoCaminho('${r.id}')">↩︎ Já devolvemos</button></div>`;
+    else if (r.tipo === 'rede' && podeEditar(r.origem))
+      acoes = `<div class="acoes"><button onclick="devolver('${r.id}')">Já foi devolvido</button></div>`;
     if (r.tipo === 'manual' && podeEditar(r.biblioteca))
       acoes = `<div class="acoes"><button onclick="devolverRecebido('${r.id}')">Já devolvemos</button><button class="sec" onclick="editarRecebido('${r.id}')">Editar</button></div>`;
   }
+  if (r.aCaminho && podeEditar(r.biblioteca))
+    acoes = `<div class="acoes"><button class="sec" onclick="devolucaoCaminho('${r.id}', false)">↩︎ Afinal ainda não saiu</button></div>`;
   return `<article class="card">${capa(r)}<div class="info">
     <h3>${esc(r.titulo)}</h3>${r.autor ? `<p>${esc(r.autor)}</p>` : ''}
     <p>Emprestado por <b>${r.tipo === 'rede' ? '🏠 ' : ''}${esc(r.dono)}</b> a ${fmt(r.dataRecebido)}${r.comQuem ? ' · está com ' + esc(r.comQuem) : ''}</p>
@@ -1132,6 +1140,24 @@ async function devolver(empId) { if (confirm('Marcar este livro como devolvido h
 async function devolverRecebido(id) { if (confirm('Confirmas que já devolveram este livro ao dono?')) gravar('devolverRecebido', { id, data: hojeISO() }, 'Marcado como devolvido ✔'); }
 
 /* ---------- separadores de empréstimos ---------- */
+/** Botões de um empréstimo, conforme quem está a ver e se a devolução já vem a caminho. */
+function botoesEmprestado(e) {
+  if (podeEditar(e.biblioteca))   // quem emprestou
+    return `<div class="acoes">${e.dataDevolvidoEnviado ? `<button onclick="receberDevolucao('${e.id}')">📦 Recebido</button>` : `<button onclick="devolver('${e.id}')">Já foi devolvido</button>`}</div>`;
+  if (e.paraBiblioteca && podeEditar(e.paraBiblioteca))   // quem tem o livro
+    return `<div class="acoes">${e.dataDevolvidoEnviado ? `<button class="sec" onclick="devolucaoCaminho('${e.id}', false)">↩︎ Afinal ainda não saiu</button>` : `<button onclick="devolucaoCaminho('${e.id}')">↩︎ Já devolvemos</button>`}</div>`;
+  return '';
+}
+async function devolucaoCaminho(id, ligar = true) {
+  const e = DB.emprestimos.find(x => x.id === id); if (!e) return;
+  if (ligar ? confirm(`Já devolveram “${e.titulo}”?\nFica “a caminho” até ${nomeLib(e.biblioteca)} confirmar que recebeu — e liberta já a vaga para pedirem outro.`)
+            : confirm('Afinal o livro ainda não saiu?'))
+    gravar('devolucaoCaminho', { id, ligar, data: hojeISO() }, ligar ? '↩︎ Devolução a caminho' : 'Voltou a “emprestado”');
+}
+async function receberDevolucao(id) {
+  const e = DB.emprestimos.find(x => x.id === id); if (!e) return;
+  if (confirm(`Confirmas que “${e.titulo}” já voltou?`)) gravar('devolver', { id, data: hojeISO() }, 'Recebido — está de volta e disponível ✔');
+}
 function renderEmprestados() {
   const meus = DB.emprestimos.filter(e => noEscopo(e.biblioteca));
   const ativos = meus.filter(e => !e.dataDevolucao).sort((a, b) => a.dataEmprestimo.localeCompare(b.dataEmprestimo));
@@ -1141,8 +1167,8 @@ function renderEmprestados() {
     return `<article class="card">${capa(l)}<div class="info"><h3>${esc(e.titulo)}</h3>
       <p>Com <b>${esc(quem)}</b> desde ${fmt(e.dataEmprestimo)}</p>
       ${ESCOPO === '*' ? `<span class="badge lib">de ${esc(nomeLib(e.biblioteca))}</span>` : ''}
-      ${notaHtml(e.notas)}<span class="badge out">Há ${dias(e.dataEmprestimo)} dias</span>
-      ${podeEditar(e.biblioteca) || podeEditar(e.paraBiblioteca) ? `<div class="acoes"><button onclick="devolver('${e.id}')">Já foi devolvido</button></div>` : ''}</div></article>`;
+      ${notaHtml(e.notas)}${e.dataDevolvidoEnviado ? `<span class="badge caminho">↩︎ A regressar desde ${fmt(e.dataDevolvidoEnviado)}</span>` : `<span class="badge out">Há ${dias(e.dataEmprestimo)} dias</span>`}
+      ${botoesEmprestado(e)}</div></article>`;
   }).join('') : `<div class="vazio">Nenhum livro emprestado neste momento.</div>`;
 
   const hist = meus.filter(e => e.dataDevolucao).sort((a, b) => b.dataDevolucao.localeCompare(a.dataDevolucao)).slice(0, 100);
