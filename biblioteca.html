@@ -71,6 +71,7 @@
   .badge.atraso{background:var(--alerta-bg);color:var(--alerta)}
   .badge.lib{background:var(--rede-bg);color:var(--rede)}
   .badge.res{background:#efe7fb;color:#5b3a9e}
+  .badge.novo{background:#fff1c2;color:#7a5200}
   .gravando{display:block;background:#fff3;border-radius:10px;padding:1px 8px;margin-bottom:2px;font-weight:600}
   .badge.caminho{background:#e3f2fd;color:#1565c0}
   .badge.oculto{background:#eceff1;color:#455a64}
@@ -172,7 +173,7 @@
   <div id="aviso" class="aviso hidden" onclick="irParaAtrasados()"></div>
   <!-- ===== SEPARADORES (ícone em cima, texto em baixo) ===== -->
   <nav>
-    <button data-tab="pesquisa" class="ativo"><span class="ico">🔎</span><span class="txt">Livros</span></button>
+    <button data-tab="pesquisa" class="ativo"><span class="ico">🔎</span><span class="txt">Livros</span><span id="bolNovo" class="bolinha hidden"></span></button>
     <button data-tab="reservas"><span class="ico">🔖</span><span class="txt">Reservas</span><span id="bolRes" class="bolinha hidden"></span></button>
     <button data-tab="emprestados"><span class="ico">📤</span><span class="txt">Emprestados</span></button>
     <button data-tab="recebidos"><span class="ico">📥</span><span class="txt">Emprestaram-nos</span><span id="bolRec" class="bolinha hidden"></span></button>
@@ -198,6 +199,7 @@
       </div>
       <div class="barra-filtros">
         <button id="btnInf" class="toggle" onclick="alternarInfantis()">🧸 Só infantis</button>
+        <button id="btnNov" class="toggle" onclick="alternarNovidades()">🆕 Novidades</button>
         <span id="filtroAutor"></span>
       </div>
       <div class="filtros">
@@ -452,7 +454,31 @@ function guardarCache() { try { localStorage.setItem(chaveCache(), JSON.stringif
 function apagarCache() { try { Object.keys(localStorage).filter(k => k.startsWith('rede_db_')).forEach(k => localStorage.removeItem(k)); } catch (e) {} }
 
 let APP_ABERTA = false;
+/* ---------- 🆕 livros novos ----------
+   "Novo" = livro de OUTRA biblioteca registado depois da última vez que abriste a app neste aparelho.
+   A marca fica durante toda a visita; na visita seguinte já não aparece.
+   O botão 🆕 Novidades mostra os registados nos últimos DIAS_NOVIDADES dias. */
+const DIAS_NOVIDADES = 30;
+let NOVO_DESDE = null;
+function marcarVisita() {
+  if (NOVO_DESDE !== null) return;                       // só uma vez por abertura da app
+  const chave = 'rede_visita_' + (DB.eu.email || '');
+  const anterior = ler(chave);
+  NOVO_DESDE = anterior || new Date().toISOString();     // primeira vez neste aparelho: nada aparece como novo
+  guardar(chave, new Date().toISOString());
+}
+/** Livro de outra biblioteca: não é das minhas bibliotecas nem fui eu que o registei. */
+const deOutros = l => !DB.eu.libs.includes(l.biblioteca) && !(l.criadoPor && l.criadoPor === DB.eu.email);
+const ehNovo = l => !!NOVO_DESDE && !!l.criadoEm && l.criadoEm > NOVO_DESDE && deOutros(l) && !String(l.id).startsWith('tmp_');
+const ehRecente = l => { if (!l.criadoEm || !deOutros(l)) return false; const d = new Date(l.criadoEm); return !isNaN(d) && (Date.now() - d) < DIAS_NOVIDADES * 864e5; };
+function alternarNovidades() {
+  guardar('rede_nov', ler('rede_nov') === '1' ? null : '1');
+  $('#btnNov').classList.toggle('on', ler('rede_nov') === '1');
+  pesquisar();
+}
+
 function mostrarApp() {
+  marcarVisita();
   $('#ecraLogin').classList.add('hidden'); $('#app').classList.remove('hidden');
   $('#meuEmail').textContent = DB.eu.email + (DB.eu.admin ? ' · admin' : (DB.eu.libs.length ? '' : ' · só consulta'));
   const guardado = APP_ABERTA ? ESCOPO : ler('rede_escopo');
@@ -564,6 +590,9 @@ function renderTudo() {
   preencherSelect('#fCol', 'Todas as coleções', colecoes);
   $('#fCol').classList.toggle('hidden', !colecoes.length);
   $('#btnInf').classList.toggle('on', ler('rede_inf') === '1');
+  $('#btnNov').classList.toggle('on', ler('rede_nov') === '1');
+  const nNovos = DB.livros.filter(ehNovo).length;
+  $('#bolNovo').classList.toggle('hidden', !nNovos); $('#bolNovo').textContent = '🆕 ' + nNovos;
   pesquisar(); renderReservas(); renderEmprestados(); renderRecebidos();
 }
 function preencherSelect(sel, primeiro, valores) {
@@ -647,7 +676,7 @@ function cardLivro(l) {
   const acoes = botoes.length ? `<div class="acoes">${botoes.join('')}</div>` : '';
   return `<article class="card ${l.biblioteca !== ESCOPO && ESCOPO !== '*' ? 'rede' : ''}">${estrela}${capa(l, meu ? l.id : null)}<div class="info">
     <h3>${esc(l.titulo)}</h3>${autores ? `<p>${autores}</p>` : ''}${colecao}${meta ? `<p>${meta}</p>` : ''}
-    ${l.isbn ? `<p>ISBN ${esc(l.isbn)}</p>` : ''}${notaHtml(l.notas)}${libBadge}${estado}${DB.eu.admin && lista(l.ocultoPara).length ? `<span class="badge oculto">🙈 escondido de ${lista(l.ocultoPara).map(nomeLib).map(esc).join(', ')}</span>` : ''}${acoes}</div></article>`;
+    ${l.isbn ? `<p>ISBN ${esc(l.isbn)}</p>` : ''}${notaHtml(l.notas)}${ehNovo(l) ? '<span class="badge novo">🆕 Novo</span>' : (ler('rede_nov') === '1' && ehRecente(l) ? `<span class="badge novo">🆕 ${fmt(String(l.criadoEm).slice(0, 10))}</span>` : '')}${libBadge}${estado}${DB.eu.admin && lista(l.ocultoPara).length ? `<span class="badge oculto">🙈 escondido de ${lista(l.ocultoPara).map(nomeLib).map(esc).join(', ')}</span>` : ''}${acoes}</div></article>`;
 }
 function cardRecebido(r, comAcoes = true) {
   const d = dias(r.dataRecebido);
@@ -710,19 +739,21 @@ function pesquisar() {
   const bruto = $('#q').value.trim(), q = norm(bruto), dig = bruto.replace(/[^0-9xX]/g, '').toUpperCase();
   const dono = $('#fDono').value, col = $('#fCol').value;
   const cat = FILTRO_CAT.incl.length || FILTRO_CAT.excl.length;   // há filtro de categorias?
-  const inf = ler('rede_inf') === '1';
+  const inf = ler('rede_inf') === '1', nov = ler('rede_nov') === '1';
   // texto: título, autor, coleção ou ISBN
   const bate = o => !q || norm(o.titulo + ' ' + o.autor + ' ' + (o.colecao || '')).includes(q) || (dig.length >= 3 && String(o.isbn).includes(dig));
   const filtra = l => FILTRO_CAT.incl.every(c => temItem(l.categoria, c)) && !FILTRO_CAT.excl.some(c => temItem(l.categoria, c))
     && (!dono || temItem(l.dono, dono))
     && (!col || norm(l.colecao) === norm(col)) && (!FILTRO_AUTOR || temItem(l.autor, FILTRO_AUTOR))
-    && (!inf || CATEGORIAS_INFANTIS.some(c => temItem(l.categoria, c))) && bate(l);
-  const filtrosDeLivro = cat || dono || col || FILTRO_AUTOR || inf;   // livros recebidos não têm estes dados
+    && (!inf || CATEGORIAS_INFANTIS.some(c => temItem(l.categoria, c))) && (!nov || ehRecente(l)) && bate(l);
+  const filtrosDeLivro = cat || dono || col || FILTRO_AUTOR || inf || nov;   // livros recebidos não têm estes dados
 
   $('#filtroAutor').innerHTML = FILTRO_AUTOR
     ? `<span class="filtro-ativo">✍️ ${esc(FILTRO_AUTOR)}<button onclick="limparAutor()" aria-label="Tirar filtro">✕</button></span>` : '';
 
-  const livros = DB.livros.filter(l => noEscopo(l.biblioteca) && filtra(l)).sort(porTitulo);
+  // com 🆕 Novidades: do mais recente para o mais antigo; senão, por título
+  const livros = DB.livros.filter(l => noEscopo(l.biblioteca) && filtra(l))
+    .sort(nov ? (a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)) : porTitulo);
   const recs = ($('#fRec').checked && !filtrosDeLivro) ? recAtivos().filter(r => noEscopo(r.biblioteca) && bate(r)).sort(porTitulo) : [];
 
   const nTotal = DB.livros.filter(l => noEscopo(l.biblioteca)).length;
@@ -730,7 +761,7 @@ function pesquisar() {
 
   let html = '';
   if (!nTotal && !recs.length) html = `<div class="vazio">Ainda não há livros aqui.${podeEditar(ESCOPO) ? '<br>Carrega em <b>📷</b> e aponta para o código de barras de um livro.' : ''}</div>`;
-  else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde à pesquisa${inf ? ' (com o filtro 🧸 Só infantis ligado)' : ''}.${ESCOPO !== '*' ? `<div class="acoes"><button class="sec" onclick="mudarEscopo('*')">🌐 Procurar em toda a rede</button></div>` : ''}</div>`;
+  else if (!livros.length && !recs.length) html = `<div class="caixa info"><h3>❌ ${ESCOPO === '*' ? 'Ninguém na rede tem' : 'Não está nesta biblioteca'}</h3>Nenhum livro corresponde à pesquisa${inf ? ' (com o filtro 🧸 Só infantis ligado)' : ''}${nov ? ` (com 🆕 Novidades: só livros de outras bibliotecas dos últimos ${DIAS_NOVIDADES} dias)` : ''}.${ESCOPO !== '*' ? `<div class="acoes"><button class="sec" onclick="mudarEscopo('*')">🌐 Procurar em toda a rede</button></div>` : ''}</div>`;
   else {
     if (q || filtrosDeLivro) html += `<div class="contagem">${livros.length} encontrado(s)${recs.length ? ` + ${recs.length} emprestado(s) por outros` : ''}</div>`;
     html += livros.map(cardLivro).join('') + recs.map(r => cardRecebido(r)).join('');
